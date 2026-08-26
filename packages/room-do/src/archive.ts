@@ -11,22 +11,32 @@ export interface SettlementRecord {
 }
 
 /**
- * Writes one completed auction to Neon. Throws on any failure — an empty
- * `databaseUrl`, a network error, a Postgres outage — so the caller can
- * leave the record in the outbox rather than lose it. A Postgres outage
- * must never be able to lose a settlement or block a live room; this
- * function is only ever called from the outbox drain, after the room has
- * already closed and broadcast on its own.
+ * Writes one completed auction to Neon. Throws on any failure — a missing
+ * or empty `databaseUrl`, a network error, a Postgres outage — so the
+ * caller can leave the record in the outbox rather than lose it. A
+ * Postgres outage must never be able to lose a settlement or block a live
+ * room; this function is only ever called from the outbox drain, after the
+ * room has already closed and broadcast on its own.
+ *
+ * `databaseUrl` is `string | undefined` rather than always `string`
+ * because production supplies it as a Workers *secret*
+ * (`wrangler secret put DATABASE_URL`), not a `[vars]` entry — a plaintext
+ * `[vars]` value of the same name would silently take precedence over the
+ * secret on every deploy, permanently breaking archiving with no error and
+ * no failing test. With no `[vars]` entry, an unset secret surfaces as
+ * `undefined`, which this function treats exactly like an empty string.
  *
  * `ON CONFLICT (room_id) DO NOTHING` makes the write idempotent, which is
  * what lets the outbox retry the same record blindly on every alarm without
  * risking a duplicate row.
  */
 export async function archiveSettlement(
-  databaseUrl: string,
+  databaseUrl: string | undefined,
   record: SettlementRecord
 ): Promise<void> {
-  if (databaseUrl === "") throw new Error("DATABASE_URL is not configured");
+  if (databaseUrl === undefined || databaseUrl === "") {
+    throw new Error("DATABASE_URL is not configured");
+  }
   const sql = neon(databaseUrl);
 
   await sql`

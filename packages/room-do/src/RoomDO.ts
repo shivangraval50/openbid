@@ -31,9 +31,17 @@ interface Attachment {
   bucket: Bucket;
 }
 
-/** The subset of the Worker's env this DO reads directly. */
+/**
+ * The subset of the Worker's env this DO reads directly.
+ *
+ * `DATABASE_URL` is optional because it is supplied as a Workers *secret*
+ * in production (`wrangler secret put DATABASE_URL`), not a `[vars]`
+ * entry — see the comment in `wrangler.toml`. With no `[vars]` entry, an
+ * unset secret surfaces as `undefined` rather than `""`; `archiveSettlement`
+ * treats the two identically.
+ */
 export interface RoomEnv {
-  DATABASE_URL: string;
+  DATABASE_URL?: string;
 }
 
 /** Above this many missed events, a reconnecting client gets a fresh
@@ -61,6 +69,17 @@ export function shouldReplay(lastSeenSeq: number, latestSeq: number, threshold: 
 export class RoomDO extends DurableObject {
   private cached: AuctionState | null = null;
   private readonly roomEnv: RoomEnv;
+
+  /**
+   * Testability seam, not a public extension point: production always
+   * archives via the real `archiveSettlement`. DATABASE_URL is
+   * deliberately unset throughout this package's test environment (so the
+   * failure path is exercised for real), which makes the success path —
+   * a row actually disappearing after a successful write — otherwise
+   * unreachable from any test. Tests reach into this private field via a
+   * cast to install a fake that resolves instead of throwing.
+   */
+  private archiveFn: typeof archiveSettlement = archiveSettlement;
 
   constructor(ctx: DurableObjectState, env: RoomEnv) {
     super(ctx, env as never);
@@ -364,7 +383,7 @@ export class RoomDO extends DurableObject {
     let anyFailed = false;
     for (const row of rows) {
       try {
-        await archiveSettlement(this.roomEnv.DATABASE_URL, JSON.parse(row.payload));
+        await this.archiveFn(this.roomEnv.DATABASE_URL, JSON.parse(row.payload));
         this.ctx.storage.sql.exec("DELETE FROM outbox WHERE id = ?", row.id);
       } catch {
         anyFailed = true;

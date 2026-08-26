@@ -1,6 +1,7 @@
 node_modules/
 .next/
 .env*.local
+.dev.vars*
 .wrangler/
 dist/
 playwright-report/
