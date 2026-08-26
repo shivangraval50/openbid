@@ -6,7 +6,13 @@ import {
   type AuctionConfig,
   type AuctionState,
 } from "@openbid/auction-core";
-import { encode, parseClientMessage, type ServerMessage } from "@openbid/protocol";
+import {
+  auctionConfigSchema,
+  encode,
+  parseClientMessage,
+  type AuctionConfig as ProtocolAuctionConfig,
+  type ServerMessage,
+} from "@openbid/protocol";
 import {
   appendEvent,
   currentSeq,
@@ -44,19 +50,50 @@ export class RoomDO extends DurableObject {
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {
-    ws.send(encode(msg));
+    try {
+      ws.send(encode(msg));
+    } catch {
+      // The socket may already be closing. One dead peer must not blow up
+      // the caller (in particular, must not blow up `broadcast`'s loop).
+    }
   }
 
   private broadcast(msg: ServerMessage): void {
     const payload = encode(msg);
-    for (const ws of this.ctx.getWebSockets()) ws.send(payload);
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(payload);
+      } catch {
+        // Same as `send`: a socket that's mid-close must not take the rest
+        // of the room down with it.
+      }
+    }
   }
 
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === "POST" && url.pathname.endsWith("/init")) {
-      const config = (await request.json()) as AuctionConfig;
+      const existingConfig = getMeta(this.ctx.storage.sql, "config");
+      if (existingConfig !== null && currentSeq(this.ctx.storage.sql) > 0) {
+        // Re-initialising a live room would fold the old event log over a
+        // new config (rewriting budgets, discarding endsAtMs, etc). Once a
+        // room has events, /init is no longer idempotent. Before any event
+        // has landed it's still fine to allow (and expected to be safe to
+        // retry), which is what the `> 0` check preserves.
+        return new Response("room already has activity", { status: 409 });
+      }
+
+      let parsed: ProtocolAuctionConfig;
+      try {
+        parsed = auctionConfigSchema.parse(await request.json());
+      } catch {
+        return new Response("invalid auction config", { status: 400 });
+      }
+      // Structural check that protocol's wire contract and auction-core's
+      // internal type still agree, the same guard `RejectReason` gets.
+      const config: AuctionConfig = parsed;
+
       putMeta(this.ctx.storage.sql, "config", JSON.stringify(config));
       this.cached = null;
       return new Response(null, { status: 201 });
@@ -108,6 +145,22 @@ export class RoomDO extends DurableObject {
       }
 
       case "hello": {
+        const existing = ws.deserializeAttachment() as Attachment | null;
+        if (existing !== null) {
+          // Already joined on this socket. Re-sending the snapshot is
+          // enough — minting a second participant or appending another
+          // `joined` event would orphan the first one forever (nothing
+          // ever removes a participant) and burns a sequence number for
+          // nothing.
+          this.send(ws, {
+            t: "snapshot",
+            seq: currentSeq(this.ctx.storage.sql),
+            serverTime: Date.now(),
+            state: { ...state, youAre: existing.participantId },
+          });
+          return;
+        }
+
         const participantId = crypto.randomUUID();
         ws.serializeAttachment({ participantId, nickname: msg.nickname } satisfies Attachment);
 
@@ -126,6 +179,12 @@ export class RoomDO extends DurableObject {
           serverTime: Date.now(),
           state: { ...this.cached, youAre: participantId },
         });
+        // Already-connected clients need to learn about the new participant
+        // too, or their local state falls behind and their sequence stream
+        // gets a hole at joinSeq. `reduce`'s "joined" case is idempotent for
+        // an existing participant, so re-delivering this to the joiner (via
+        // broadcast, in addition to the snapshot above) is harmless.
+        this.broadcast({ t: "delta", seq: joinSeq, serverTime: Date.now(), event: joinEvent });
         return;
       }
 
@@ -157,7 +216,15 @@ export class RoomDO extends DurableObject {
     }
   }
 
-  override async webSocketClose(): Promise<void> {
-    // Participants persist in the event log; nothing to clean up.
+  override async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    // Participants persist in the event log; nothing to clean up there.
+    // Still call close() ourselves: with hibernatable WebSockets this
+    // completes the closing handshake on our side even if the client-side
+    // close already happened.
+    try {
+      ws.close(code, reason);
+    } catch {
+      // Already closed.
+    }
   }
 }

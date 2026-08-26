@@ -1,6 +1,6 @@
 name = "openbid-rooms"
 main = "src/index.ts"
-compatibility_date = "2026-08-01"
+compatibility_date = "2026-03-10"
 
 [[durable_objects.bindings]]
 name = "ROOMS"

@@ -13,6 +13,16 @@ const config: AuctionConfig = {
   endsAtMs: Date.now() + 600_000,
 };
 
+/**
+ * `isolatedStorage: false` (required for WebSockets-over-Durable-Objects,
+ * see vitest.config.ts) means every test file in this package shares the
+ * same underlying storage. Suffix every room id so no two tests — in this
+ * file or a future one — can ever collide on the same room.
+ */
+function roomId(label: string): string {
+  return `${label}-${crypto.randomUUID()}`;
+}
+
 async function initRoom(id: string, overrides: Partial<AuctionConfig> = {}) {
   const res = await SELF.fetch(`https://x/rooms/${id}/init`, {
     method: "POST",
@@ -55,41 +65,49 @@ async function waitFor<T extends { t: string }>(
 
 describe("RoomDO", () => {
   it("serves an HTTP snapshot after init", async () => {
-    await initRoom("snap");
-    const res = await SELF.fetch("https://x/rooms/snap/snapshot");
+    const id = roomId("snap");
+    await initRoom(id);
+    const res = await SELF.fetch(`https://x/rooms/${id}/snapshot`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { seq: number; state: { config: AuctionConfig } };
     expect(body.state.config.itemName).toBe("A rare compiler");
   });
 
   it("404s a snapshot for a room that was never initialised", async () => {
-    const res = await SELF.fetch("https://x/rooms/ghost/snapshot");
+    const res = await SELF.fetch(`https://x/rooms/${roomId("ghost")}/snapshot`);
     expect(res.status).toBe(404);
   });
 
   it("sends a snapshot on hello", async () => {
-    await initRoom("hello");
-    const { inbox } = await openSocket("hello", "ada");
+    const id = roomId("hello");
+    await initRoom(id);
+    const { inbox } = await openSocket(id, "ada");
     const snapshot = await waitFor(inbox, (m) => m.t === "snapshot", "snapshot");
     expect(snapshot.t).toBe("snapshot");
   });
 
   it("acks a valid bid and broadcasts a delta", async () => {
-    await initRoom("bid");
-    const { ws, inbox } = await openSocket("bid", "ada");
+    const id = roomId("bid");
+    await initRoom(id);
+    const { ws, inbox } = await openSocket(id, "ada");
     await waitFor(inbox, (m) => m.t === "snapshot", "snapshot");
 
     ws.send(encode({ t: "bid", clientSeq: 1, amount: 100 }));
 
     const ack = await waitFor(inbox, (m) => m.t === "ack", "ack");
     expect(ack).toMatchObject({ t: "ack", clientSeq: 1 });
-    const delta = await waitFor(inbox, (m) => m.t === "delta", "delta");
+    const delta = await waitFor(
+      inbox,
+      (m) => m.t === "delta" && (m as { event?: { type?: string } }).event?.type === "bidPlaced",
+      "bid delta"
+    );
     expect(delta).toMatchObject({ t: "delta" });
   });
 
   it("rejects a bid below the minimum with TOO_LOW", async () => {
-    await initRoom("low");
-    const { ws, inbox } = await openSocket("low", "ada");
+    const id = roomId("low");
+    await initRoom(id);
+    const { ws, inbox } = await openSocket(id, "ada");
     await waitFor(inbox, (m) => m.t === "snapshot", "snapshot");
 
     ws.send(encode({ t: "bid", clientSeq: 1, amount: 5 }));
@@ -99,8 +117,9 @@ describe("RoomDO", () => {
   });
 
   it("rejects a bid above the bidder budget with INSUFFICIENT_BUDGET", async () => {
-    await initRoom("rich");
-    const { ws, inbox } = await openSocket("rich", "ada");
+    const id = roomId("rich");
+    await initRoom(id);
+    const { ws, inbox } = await openSocket(id, "ada");
     await waitFor(inbox, (m) => m.t === "snapshot", "snapshot");
 
     ws.send(encode({ t: "bid", clientSeq: 1, amount: 100_000 }));
@@ -110,8 +129,9 @@ describe("RoomDO", () => {
   });
 
   it("assigns strictly increasing sequence numbers", async () => {
-    await initRoom("seq");
-    const { ws, inbox } = await openSocket("seq", "ada");
+    const id = roomId("seq");
+    await initRoom(id);
+    const { ws, inbox } = await openSocket(id, "ada");
     await waitFor(inbox, (m) => m.t === "snapshot", "snapshot");
 
     ws.send(encode({ t: "bid", clientSeq: 1, amount: 100 }));
@@ -125,23 +145,138 @@ describe("RoomDO", () => {
   });
 
   it("answers ping with pong carrying server time", async () => {
-    await initRoom("ping");
-    const { ws, inbox } = await openSocket("ping", "ada");
+    const id = roomId("ping");
+    await initRoom(id);
+    const { ws, inbox } = await openSocket(id, "ada");
     ws.send(encode({ t: "ping", clientTime: 12_345 }));
     const pong = await waitFor(inbox, (m) => m.t === "pong", "pong");
     expect(pong).toMatchObject({ t: "pong", clientTime: 12_345 });
     expect(typeof (pong as { serverTime: number }).serverTime).toBe("number");
   });
 
-  it("closes the socket on a malformed message instead of throwing", async () => {
-    await initRoom("bad");
-    const { ws } = await openSocket("bad", "ada");
+  it("closes only the offending socket on a malformed message, and the room stays alive", async () => {
+    const id = roomId("bad");
+    await initRoom(id);
+    const { ws: badWs } = await openSocket(id, "ada");
+    const { ws: goodWs, inbox: goodInbox } = await openSocket(id, "bob");
+    await waitFor(goodInbox, (m) => m.t === "snapshot", "bob's snapshot");
+
     let closed = false;
-    ws.addEventListener("close", () => {
+    badWs.addEventListener("close", () => {
       closed = true;
     });
-    ws.send("not json at all");
+    badWs.send("not json at all");
     for (let i = 0; i < 100 && !closed; i += 1) await new Promise((r) => setTimeout(r, 10));
     expect(closed).toBe(true);
+
+    // The room-wide blast radius the parse guard exists to prevent: if
+    // `webSocketMessage` had thrown instead of closing just the offending
+    // socket, the whole DO would reset and every socket — including this
+    // one, which never sent anything bad — would be disconnected too.
+    goodWs.send(encode({ t: "ping", clientTime: 99 }));
+    const pong = await waitFor(goodInbox, (m) => m.t === "pong", "pong after neighbor's garbage");
+    expect(pong).toMatchObject({ t: "pong", clientTime: 99 });
+
+    // A ping alone never calls `broadcast`, so it can't tell us whether
+    // `broadcast` itself is still safe to call now that `badWs` is closed
+    // but still enumerable by `getWebSockets()` (the exact failure mode
+    // Important 5 named: A sends garbage and is closed, B bids, broadcast
+    // reaches the closed A, an unguarded `ws.send` there throws mid-loop and
+    // takes the whole room down). Force that path for real.
+    goodWs.send(encode({ t: "bid", clientSeq: 1, amount: 100 }));
+    const ack = await waitFor(goodInbox, (m) => m.t === "ack", "ack after neighbor's garbage");
+    expect(ack).toMatchObject({ t: "ack", clientSeq: 1 });
+    const delta = await waitFor(
+      goodInbox,
+      (m) => m.t === "delta" && (m as { event?: { type?: string } }).event?.type === "bidPlaced",
+      "bid delta after neighbor's garbage"
+    );
+    expect(delta.t).toBe("delta");
+  });
+
+  it("allows re-initialising a room that has no events yet", async () => {
+    const id = roomId("reinit-empty");
+    await initRoom(id);
+    // No socket ever connected, no bid ever placed: still safe to retry.
+    const res = await SELF.fetch(`https://x/rooms/${id}/init`, {
+      method: "POST",
+      body: JSON.stringify({ ...config, itemName: "A different item" }),
+    });
+    expect(res.status).toBe(201);
+
+    const snap = await SELF.fetch(`https://x/rooms/${id}/snapshot`);
+    const body = (await snap.json()) as { state: { config: AuctionConfig } };
+    expect(body.state.config.itemName).toBe("A different item");
+  });
+
+  it("409s re-initialising a room that already has events", async () => {
+    const id = roomId("reinit-live");
+    await initRoom(id);
+    const { ws, inbox } = await openSocket(id, "ada");
+    await waitFor(inbox, (m) => m.t === "snapshot", "snapshot");
+    ws.send(encode({ t: "bid", clientSeq: 1, amount: 100 }));
+    await waitFor(inbox, (m) => m.t === "ack", "ack");
+
+    const res = await SELF.fetch(`https://x/rooms/${id}/init`, {
+      method: "POST",
+      body: JSON.stringify(config),
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("400s init with a malformed body", async () => {
+    const id = roomId("bad-init");
+    const res = await SELF.fetch(`https://x/rooms/${id}/init`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+
+    // And the room must not have been left half-initialised by the attempt.
+    const snap = await SELF.fetch(`https://x/rooms/${id}/snapshot`);
+    expect(snap.status).toBe(404);
+  });
+
+  it("broadcasts a joined event to already-connected clients", async () => {
+    const id = roomId("join-broadcast");
+    await initRoom(id);
+    const { inbox: adaInbox } = await openSocket(id, "ada");
+    await waitFor(adaInbox, (m) => m.t === "snapshot", "ada's snapshot");
+
+    await openSocket(id, "bob");
+
+    const delta = await waitFor(
+      adaInbox,
+      (m) =>
+        m.t === "delta" &&
+        (m as { event?: { type?: string; nickname?: string } }).event?.type === "joined" &&
+        (m as { event?: { type?: string; nickname?: string } }).event?.nickname === "bob",
+      "bob's joined delta, seen by ada"
+    );
+    expect(delta.t).toBe("delta");
+  });
+
+  it("does not create a duplicate participant on repeated hello over the same socket", async () => {
+    const id = roomId("rehello");
+    await initRoom(id);
+    const { ws, inbox } = await openSocket(id, "ada");
+    await waitFor(inbox, (m) => m.t === "snapshot", "first snapshot");
+
+    ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname: "ada-again" }));
+    await waitFor(
+      inbox,
+      () => inbox.filter((m) => m.t === "snapshot").length >= 2,
+      "second snapshot"
+    );
+
+    const snap = await SELF.fetch(`https://x/rooms/${id}/snapshot`);
+    const body = (await snap.json()) as {
+      seq: number;
+      state: { participants: Record<string, unknown> };
+    };
+    // One `joined` event, one participant — the second hello must not have
+    // appended another event or minted another participant.
+    expect(body.seq).toBe(1);
+    expect(Object.keys(body.state.participants)).toHaveLength(1);
   });
 });

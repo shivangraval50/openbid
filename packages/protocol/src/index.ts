@@ -13,6 +13,24 @@ export type RejectReason = z.infer<typeof rejectReasonSchema>;
 const seq = z.number().int().nonnegative();
 const money = z.number().finite().positive();
 
+// The shape of `POST /rooms/:id/init`'s body. This is a real cross-boundary
+// contract (the web app produces it, room-do validates it), which is what
+// this package is for. Declared structurally, without importing
+// `@openbid/auction-core`, exactly like `RejectReason` above: room-do assigns
+// the parsed result where auction-core's `AuctionConfig` is expected, so a
+// mismatch between the two independently-declared shapes is a type error in
+// room-do's typecheck, not a runtime surprise.
+export const auctionConfigSchema = z.object({
+  itemName: z.string().min(1),
+  startingPrice: z.number().finite(),
+  minIncrement: z.number().finite(),
+  startingBudget: z.number().finite(),
+  antiSnipeWindowMs: z.number().finite(),
+  antiSnipeExtensionMs: z.number().finite(),
+  endsAtMs: z.number().finite(),
+});
+export type AuctionConfig = z.infer<typeof auctionConfigSchema>;
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   z.object({ t: z.literal("hello"), lastSeenSeq: seq, nickname: z.string().min(1).max(32) }),
   z.object({ t: z.literal("bid"), clientSeq: seq, amount: money }),

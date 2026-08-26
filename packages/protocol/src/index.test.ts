@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ZodError } from "zod";
-import { parseClientMessage, parseServerMessage, encode } from "./index.js";
+import { auctionConfigSchema, parseClientMessage, parseServerMessage, encode } from "./index.js";
 
 describe("parseClientMessage", () => {
   it("accepts a bid", () => {
@@ -48,6 +48,31 @@ describe("parseServerMessage", () => {
 
   it("rejects malformed JSON", () => {
     expect(() => parseServerMessage("{{{")).toThrow(ZodError);
+  });
+});
+
+describe("auctionConfigSchema", () => {
+  const valid = {
+    itemName: "A rare compiler",
+    startingPrice: 100,
+    minIncrement: 10,
+    startingBudget: 500,
+    antiSnipeWindowMs: 10_000,
+    antiSnipeExtensionMs: 15_000,
+    endsAtMs: Date.now() + 600_000,
+  };
+
+  it("accepts a well-formed config", () => {
+    expect(auctionConfigSchema.parse(valid)).toEqual(valid);
+  });
+
+  it("rejects an empty body", () => {
+    expect(() => auctionConfigSchema.parse({})).toThrow(ZodError);
+  });
+
+  it("rejects a config missing a required field", () => {
+    const { endsAtMs, ...rest } = valid;
+    expect(() => auctionConfigSchema.parse(rest)).toThrow(ZodError);
   });
 });
 
