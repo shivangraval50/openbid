@@ -60,6 +60,53 @@ describe("snapshot handling", () => {
   });
 });
 
+describe("seedFromSnapshot", () => {
+  // Catches: an implementation that reuses the `snapshot` case verbatim and
+  // sets `youAre` from some default/derived value instead of leaving it
+  // `null` -- the HTTP `/snapshot` envelope carries no participant
+  // identity, so a non-null result here would be fabricated.
+  it("adopts server state and seq, but leaves youAre null", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(4, 1_000, seededState());
+
+    expect(store.getState().server?.config.itemName).toBe("store");
+    expect(store.getState().lastSeenSeq).toBe(4);
+    expect(store.getState().youAre).toBeNull();
+  });
+
+  // Catches: an implementation that leaves stale pending bids in place
+  // (e.g. only sets `server`/`lastSeenSeq` and forgets to clear `pending`),
+  // which would show a phantom optimistic price on first paint.
+  it("clears any pending bids, since seeded server state is authoritative", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(4, 1_000, seededState());
+    store.getState().placeOptimisticBid(200);
+    expect(selectPendingCount(store.getState())).toBe(1);
+
+    store.getState().seedFromSnapshot(9, 2_000, seededState());
+    expect(selectPendingCount(store.getState())).toBe(0);
+  });
+
+  // Catches: a `youAre` that gets stuck at null forever, or a real snapshot
+  // handler that is somehow gated on having been seeded first. Identity
+  // must become known the moment the socket's own snapshot arrives, on top
+  // of an SSR-seeded store.
+  it("a later real snapshot sets youAre once the socket's own snapshot arrives", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(4, 1_000, seededState());
+    expect(store.getState().youAre).toBeNull();
+
+    store.getState().applyServerMessage({
+      t: "snapshot",
+      seq: 4,
+      serverTime: 1_000,
+      state: seededState(),
+      youAre: "me",
+    });
+    expect(store.getState().youAre).toBe("me");
+  });
+});
+
 describe("optimistic bids", () => {
   it("shows the optimistic price immediately", () => {
     const store = storeWithSnapshot();

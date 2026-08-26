@@ -17,6 +17,7 @@ export interface AuctionStoreState {
   nextClientSeq: number;
 
   applyServerMessage: (msg: ServerMessage) => void;
+  seedFromSnapshot: (seq: number, serverTime: number, state: AuctionState) => void;
   placeOptimisticBid: (amount: number) => number;
   observeClock: (clientSentMs: number, serverTime: number, clientRecvMs: number) => void;
 }
@@ -104,6 +105,20 @@ export function createAuctionStore(): AuctionStore {
           return;
         }
       }
+    },
+
+    // Seeds the store from the HTTP `/snapshot` envelope (used for the SSR
+    // first paint). Deliberately not routed through `applyServerMessage`'s
+    // "snapshot" case: that case's message shape requires `youAre`, a real
+    // field the server always sends over a live connection but which an
+    // HTTP request -- having no connection, and therefore no participant
+    // identity -- correctly has no value for. Faking a `youAre` here (or
+    // widening the wire schema to make it optional) would misrepresent an
+    // invariant the server actually satisfies on every socket snapshot.
+    // Identity becomes known only once the socket's own "snapshot" message
+    // arrives and goes through `applyServerMessage` normally.
+    seedFromSnapshot: (seq, _serverTime, state) => {
+      set({ server: state, lastSeenSeq: seq, pending: [] });
     },
 
     placeOptimisticBid: (amount) => {
