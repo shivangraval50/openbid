@@ -219,6 +219,33 @@ describe("LobbyDO", () => {
     expect(await findRoom(id)).toBeUndefined();
   });
 
+  it("204s a repeat price update against a registered room, even with identical values", async () => {
+    const id = roomId("repeat-identical-price");
+    await registerRoom(id, { itemName: "Repeatable" });
+
+    const first = await lobbyFetch(`https://x/lobby/rooms/${id}/price`, {
+      method: "POST",
+      body: JSON.stringify({ highBid: 100, status: "open" }),
+    });
+    expect(first.status).toBe(204);
+
+    // This pins down which of two plausible readings of `rowsWritten` this
+    // Workers SQLite API actually uses: "rows the WHERE clause matched"
+    // (classic SQLite `changes()` semantics) vs. "rows whose stored bytes
+    // actually changed." If it were the latter, this second call -- setting
+    // the exact same highBid/status the row already holds -- would see
+    // `rowsWritten === 0` and the 404 branch above would wrongly report
+    // "no such room" for a room that is, in fact, still registered: a false
+    // negative in exactly the observability signal the 404 exists to
+    // provide. It returns 204, confirming `rowsWritten` counts matched
+    // rows, not byte-level diffs, so gating the 404 on it is trustworthy.
+    const second = await lobbyFetch(`https://x/lobby/rooms/${id}/price`, {
+      method: "POST",
+      body: JSON.stringify({ highBid: 100, status: "open" }),
+    });
+    expect(second.status).toBe(204);
+  });
+
   it("overwrites itemName and endsAtMs, without duplicating the row, when the same room registers twice", async () => {
     const id = roomId("gamma");
     await registerRoom(id, { itemName: "Gamma v1", endsAtMs: 5_000 });
