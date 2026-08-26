@@ -260,7 +260,8 @@ export class RoomDO extends DurableObject {
             t: "snapshot",
             seq: currentSeq(this.ctx.storage.sql),
             serverTime: Date.now(),
-            state: { ...state, youAre: existing.participantId },
+            state,
+            youAre: existing.participantId,
           });
           return;
         }
@@ -304,7 +305,8 @@ export class RoomDO extends DurableObject {
           t: "snapshot",
           seq: joinSeq,
           serverTime: atMs,
-          state: { ...this.cached, youAre: participantId },
+          state: this.cached,
+          youAre: participantId,
         });
         // Already-connected clients need to learn about the new participant
         // too, or their local state falls behind and their sequence stream

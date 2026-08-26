@@ -59,7 +59,16 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
 export const serverMessageSchema = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("snapshot"), seq, serverTime: z.number(), state: z.unknown() }),
+  z.object({
+    t: z.literal("snapshot"),
+    seq,
+    serverTime: z.number(),
+    state: z.unknown(),
+    // Per-connection view metadata (which participant this socket is), not
+    // part of the auction state itself — kept as a sibling field so
+    // consumers never have to cast `state` to smuggle it back out.
+    youAre: z.string(),
+  }),
   z.object({ t: z.literal("delta"), seq, serverTime: z.number(), event: z.unknown() }),
   z.object({ t: z.literal("ack"), clientSeq: seq, seq }),
   z.object({ t: z.literal("reject"), clientSeq: seq, reason: rejectReasonSchema }),
