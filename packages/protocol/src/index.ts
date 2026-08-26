@@ -29,12 +29,24 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
+const jsonEnvelope = z.string().transform((raw, ctx): unknown => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "invalid JSON" });
+    return z.NEVER;
+  }
+});
+
+const clientEnvelopeSchema = jsonEnvelope.pipe(clientMessageSchema);
+const serverEnvelopeSchema = jsonEnvelope.pipe(serverMessageSchema);
+
 export function parseClientMessage(raw: string): ClientMessage {
-  return clientMessageSchema.parse(JSON.parse(raw));
+  return clientEnvelopeSchema.parse(raw);
 }
 
 export function parseServerMessage(raw: string): ServerMessage {
-  return serverMessageSchema.parse(JSON.parse(raw));
+  return serverEnvelopeSchema.parse(raw);
 }
 
 export function encode(msg: ClientMessage | ServerMessage): string {

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { ZodError } from "zod";
 import { parseClientMessage, parseServerMessage, encode } from "./index.js";
 
 describe("parseClientMessage", () => {
@@ -25,7 +26,11 @@ describe("parseClientMessage", () => {
   });
 
   it("rejects malformed JSON", () => {
-    expect(() => parseClientMessage("{{{")).toThrow();
+    expect(() => parseClientMessage("{{{")).toThrow(ZodError);
+  });
+
+  it("rejects well-formed JSON but invalid message shape", () => {
+    expect(() => parseClientMessage(JSON.stringify({ foo: "bar" }))).toThrow(ZodError);
   });
 });
 
@@ -38,7 +43,11 @@ describe("parseServerMessage", () => {
   it("rejects an unknown reject reason", () => {
     expect(() =>
       parseServerMessage(JSON.stringify({ t: "reject", clientSeq: 3, reason: "BECAUSE" }))
-    ).toThrow();
+    ).toThrow(ZodError);
+  });
+
+  it("rejects malformed JSON", () => {
+    expect(() => parseServerMessage("{{{")).toThrow(ZodError);
   });
 });
 
