@@ -350,8 +350,18 @@ export class RoomDO extends DurableObject {
 
         const seq = appendEvent(this.ctx.storage.sql, decision.event);
         this.cached = reduce(state, decision.event);
-        this.send(ws, { t: "ack", clientSeq: msg.clientSeq, seq });
+        // Broadcast before acking, and in that order specifically: `broadcast`
+        // reaches every socket in the room *including this bidder's own*, so
+        // on this one connection the bidder sees the delta and then the ack
+        // for the same seq. That ordering means the delta always lands in
+        // `server` before the ack ever clears the matching pending entry --
+        // no one-frame window where the optimistic price has been cleared
+        // but the authoritative one hasn't arrived yet. (The client no
+        // longer derives resume position from `ack.seq` at all -- see
+        // `@openbid/store` -- so this reordering is purely about closing
+        // that visual gap, not about correctness of resumption.)
         this.broadcast({ t: "delta", seq, serverTime: atMs, event: decision.event });
+        this.send(ws, { t: "ack", clientSeq: msg.clientSeq, seq });
         // A bid inside the anti-snipe window pushes endsAtMs out; re-arm so
         // the alarm still fires at the (possibly new) real deadline instead
         // of the one that was current when the room was initialised.

@@ -74,12 +74,80 @@ describe("optimistic bids", () => {
     expect(b).toBeGreaterThan(a);
   });
 
-  it("clears the pending bid on ack", () => {
+  it("clears the pending bid on ack, without advancing lastSeenSeq on its own", () => {
     const store = storeWithSnapshot();
     const clientSeq = store.getState().placeOptimisticBid(250);
     store.getState().applyServerMessage({ t: "ack", clientSeq, seq: 5 });
     expect(selectPendingCount(store.getState())).toBe(0);
-    expect(store.getState().lastSeenSeq).toBe(5);
+    // Corrected invariant: `lastSeenSeq` means "the highest seq applied via
+    // a delta." An ack's `seq` is informational only -- it must not move
+    // this watermark, or a delta for that same seq (in-flight, reordered,
+    // or lost to a swallowed per-socket send failure) would later be
+    // dropped as a duplicate it was never actually applied. It stays at 4,
+    // the seq from the snapshot this store started from.
+    expect(store.getState().lastSeenSeq).toBe(4);
+  });
+
+  function ownBidEvent() {
+    return {
+      type: "bidPlaced" as const,
+      participantId: "me",
+      amount: 250,
+      atMs: 1_100,
+      newEndsAtMs: 1_000_000,
+    };
+  }
+
+  it("absorbs its own winning bid when the delta arrives before its ack (the order RoomDO now uses)", () => {
+    const store = storeWithSnapshot();
+    const clientSeq = store.getState().placeOptimisticBid(250);
+
+    // RoomDO now broadcasts the delta (reaching the bidder's own socket
+    // too) before sending that bid's ack, specifically to close the
+    // one-frame window where the optimistic price would otherwise have
+    // been cleared before the authoritative one arrived.
+    store.getState().applyServerMessage({
+      t: "delta",
+      seq: 5,
+      serverTime: 1_100,
+      event: ownBidEvent(),
+    });
+    store.getState().applyServerMessage({ t: "ack", clientSeq, seq: 5 });
+
+    expect(store.getState().server?.highBid?.amount).toBe(250);
+    expect(selectPendingCount(store.getState())).toBe(0);
+    expect(selectDisplayPrice(store.getState())).toBe(250);
+  });
+
+  // This is the test that would have caught the original bug, and it must
+  // use the *adversarial* order (ack before its matching delta) to do so:
+  // with the delta-first order above, the delta is already reduced into
+  // `server` by the time the ack arrives, so that test alone passes
+  // whether or not the ack handler wrongly advances `lastSeenSeq` -- it
+  // does not actually exercise the fix. This ordering is exactly what the
+  // pre-fix RoomDO produced (ack sent, then the matching delta broadcast
+  // back to the same socket), and is also the case Half 2 of the fix
+  // (lastSeenSeq advances only from a delta) is meant to make harmless
+  // regardless of which one lands first.
+  it("absorbs its own winning bid even if its ack arrives before the matching delta", () => {
+    const store = storeWithSnapshot();
+    const clientSeq = store.getState().placeOptimisticBid(250);
+
+    store.getState().applyServerMessage({ t: "ack", clientSeq, seq: 5 });
+    store.getState().applyServerMessage({
+      t: "delta",
+      seq: 5,
+      serverTime: 1_100,
+      event: ownBidEvent(),
+    });
+
+    // The actual bug this test exists to catch: clearing the pending entry
+    // on ack is not sufficient on its own. If the ack had advanced
+    // lastSeenSeq to 5, this delta (also seq 5) would be dropped as a
+    // duplicate and highBid would stay null forever on this client.
+    expect(store.getState().server?.highBid?.amount).toBe(250);
+    expect(selectPendingCount(store.getState())).toBe(0);
+    expect(selectDisplayPrice(store.getState())).toBe(250);
   });
 
   it("rolls the price back on reject and records the reason", () => {

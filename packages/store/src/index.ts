@@ -65,9 +65,25 @@ export function createAuctionStore(): AuctionStore {
           return;
         }
         case "ack": {
+          // `lastSeenSeq` means exactly "the highest seq I have applied to
+          // `server` via `reduce`" -- it must advance only from a `delta`,
+          // never from an `ack`. `RoomDO` broadcasts the delta for an
+          // accepted bid (including back to the bidder's own socket)
+          // before sending that bid's ack, so by the time this ack
+          // arrives the matching delta has normally already been reduced
+          // into `server`. But that ordering is a courtesy, not something
+          // this handler may depend on: if an ack advanced `lastSeenSeq`
+          // on its own, a delta that arrived out of order, or one lost to
+          // a swallowed per-socket send failure, would then be dropped as
+          // a "duplicate" it never actually applied -- silently freezing
+          // `server.highBid` behind the bidder's own accepted bid. Leaving
+          // `lastSeenSeq` alone here means that failure mode instead just
+          // waits for the next delta (or falls behind enough to trigger a
+          // resync snapshot) -- never a silent, permanent divergence.
+          // `ack.seq` is kept on the wire for debugging only; it is not a
+          // resume-position input.
           set((s) => ({
             pending: s.pending.filter((p) => p.clientSeq !== msg.clientSeq),
-            lastSeenSeq: Math.max(s.lastSeenSeq, msg.seq),
           }));
           return;
         }
