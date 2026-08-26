@@ -88,12 +88,24 @@ export class LobbyDO extends DurableObject {
       } catch {
         return new Response("invalid lobby price update", { status: 400 });
       }
-      sql.exec(
+      const cursor = sql.exec(
         "UPDATE rooms SET high_bid = ?, status = ? WHERE room_id = ?",
         parsed.highBid,
         parsed.status,
         priceMatch[1]!
       );
+      // `rowsWritten === 0` means the WHERE clause matched nothing — the
+      // room was never registered (or was registered under a different
+      // id). Without this check, a live, biddable room that never made it
+      // into the registry is indistinguishable from a successful update:
+      // both return 204 and the room stays invisible in the lobby with no
+      // signal anywhere. `notifyLobby` (the only production caller) never
+      // looks at this response — see its doc comment — so surfacing 404
+      // here is purely for observability, not a mechanism either side
+      // relies on for correctness.
+      if (cursor.rowsWritten === 0) {
+        return new Response("no such room", { status: 404 });
+      }
       return new Response(null, { status: 204 });
     }
 

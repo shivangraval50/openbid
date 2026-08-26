@@ -138,6 +138,14 @@ export class RoomDO extends DurableObject {
    * bid or an alarm firing that fails because the lobby happened to be
    * unreachable is not. Nothing here is awaited by, or allowed to affect,
    * the caller's own success/failure outcome.
+   *
+   * The resolved `Response` (including a `404` from `LobbyDO` when this
+   * room was never registered — see its price-update handler) is
+   * deliberately never inspected. `fetch` only rejects on a transport-level
+   * failure, never on an HTTP error status, so an unregistered room's 404
+   * is just a normal resolved value here that this method discards without
+   * looking at — it is observability for whoever reads the lobby's logs,
+   * not a signal this method, or its callers, ever act on.
    */
   private async notifyLobby(): Promise<void> {
     const state = this.cached;

@@ -47,6 +47,21 @@ function roomId(label: string): string {
  * lobby's *direct* HTTP calls in this test file the same tolerance so no
  * test's pass/fail depends on which file happened to touch the singleton
  * first.
+ *
+ * One consequence worth knowing before you go hunting for a bug: the throw
+ * happens inside workerd's own `ctx.blockConcurrencyWhile`, which is the
+ * mechanism that evicts the broken instance -- so even on a fully green run
+ * you may see `workerd/io/worker.c++: info: uncaught exception; ... changed,
+ * invalidating this Durable Object ...` lines in stdout/stderr. That is this
+ * exact, expected, harness-level eviction firing (at most once per
+ * cross-file transition on this singleton) and being silently retried here
+ * or in `notifyLobby` -- it is not a real exception escaping anything, it
+ * does not fail any test, and it is not a `[mf:warn]`-style Miniflare
+ * warning. There is no config knob in `@cloudflare/vitest-pool-workers` or
+ * `wrangler.toml` to suppress workerd's own C++-level log line, and
+ * consolidating test files would not remove it either: the indirect touches
+ * to `LOBBY` from `room.test.ts`/`settlement.test.ts` come from `RoomDO`
+ * itself (`notifyLobby`), not from anything in this file.
  */
 async function lobbyFetch(url: string, init?: RequestInit): Promise<Response> {
   try {
@@ -169,7 +184,7 @@ describe("LobbyDO", () => {
     });
   });
 
-  it("updates the cached price and status via the price endpoint", async () => {
+  it("204s and updates the cached price and status when the room is already registered", async () => {
     const id = roomId("beta");
     await registerRoom(id, { itemName: "Beta" });
 
@@ -183,6 +198,25 @@ describe("LobbyDO", () => {
     // Catches a price endpoint that no-ops, or that updates the wrong row
     // (e.g. ignores the :roomId path param and updates every room).
     expect(room).toMatchObject({ roomId: id, highBid: 250, status: "closed" });
+  });
+
+  it("404s a price update against an unregistered room, and creates no row", async () => {
+    const id = roomId("never-registered");
+
+    const res = await lobbyFetch(`https://x/lobby/rooms/${id}/price`, {
+      method: "POST",
+      body: JSON.stringify({ highBid: 100, status: "open" }),
+    });
+    // Without this check, a live, biddable room that was never registered
+    // is indistinguishable from a successful update: both would return 204
+    // with nothing anywhere to signal the gap. A regression here (e.g. the
+    // handler going back to an unconditional 204, or "fixing" this into an
+    // accidental upsert) is exactly what this assertion catches.
+    expect(res.status).toBe(404);
+
+    // The UPDATE's WHERE clause matching nothing must not have silently
+    // created a row behind the 404 (an upsert-by-accident) either.
+    expect(await findRoom(id)).toBeUndefined();
   });
 
   it("overwrites itemName and endsAtMs, without duplicating the row, when the same room registers twice", async () => {
