@@ -14,6 +14,24 @@ describe("describeSkew", () => {
   it("uses the magnitude, not the sign, for a negative offset", () => {
     expect(describeSkew(-1_500)).toMatch(/1500\s*ms/);
   });
+
+  // Boundary tests pinning the 250ms threshold exactly.
+  // Changing `<=` to `<` in the implementation will fail these.
+  it("reports exactly 250ms (threshold) as synced", () => {
+    expect(describeSkew(250)).toMatch(/synced/i);
+  });
+
+  it("reports exactly 251ms (above threshold) as not synced", () => {
+    expect(describeSkew(251)).toMatch(/251\s*ms/);
+  });
+
+  it("reports exactly -250ms (negative threshold) as synced", () => {
+    expect(describeSkew(-250)).toMatch(/synced/i);
+  });
+
+  it("reports exactly -251ms (negative above threshold) as not synced", () => {
+    expect(describeSkew(-251)).toMatch(/251\s*ms/);
+  });
 });
 
 describe("Latency", () => {
