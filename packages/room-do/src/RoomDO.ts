@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  closeAuction,
   initialState,
   reduce,
   validateBid,
@@ -22,11 +23,17 @@ import {
   readEventsSince,
 } from "./sql.js";
 import { newBucket, takeToken, type Bucket } from "./ratelimit.js";
+import { archiveSettlement, type SettlementRecord } from "./archive.js";
 
 interface Attachment {
   participantId: string;
   nickname: string;
   bucket: Bucket;
+}
+
+/** The subset of the Worker's env this DO reads directly. */
+export interface RoomEnv {
+  DATABASE_URL: string;
 }
 
 /** Above this many missed events, a reconnecting client gets a fresh
@@ -53,9 +60,11 @@ export function shouldReplay(lastSeenSeq: number, latestSeq: number, threshold: 
 
 export class RoomDO extends DurableObject {
   private cached: AuctionState | null = null;
+  private readonly roomEnv: RoomEnv;
 
-  constructor(ctx: DurableObjectState, env: unknown) {
+  constructor(ctx: DurableObjectState, env: RoomEnv) {
     super(ctx, env as never);
+    this.roomEnv = env;
     initSchema(this.ctx.storage.sql);
   }
 
@@ -118,8 +127,15 @@ export class RoomDO extends DurableObject {
       // internal type still agree, the same guard `RejectReason` gets.
       const config: AuctionConfig = parsed;
 
+      // Stored so the archive record is human-readable without having to
+      // decode the Durable Object id.
+      const roomId = url.pathname.split("/")[2] ?? "";
+      putMeta(this.ctx.storage.sql, "roomId", roomId);
       putMeta(this.ctx.storage.sql, "config", JSON.stringify(config));
       this.cached = null;
+      // The clock is server-owned: this alarm, not a client timer, is what
+      // closes the auction.
+      await this.ctx.storage.setAlarm(config.endsAtMs);
       return new Response(null, { status: 201 });
     }
 
@@ -270,7 +286,105 @@ export class RoomDO extends DurableObject {
         this.cached = reduce(state, decision.event);
         this.send(ws, { t: "ack", clientSeq: msg.clientSeq, seq });
         this.broadcast({ t: "delta", seq, serverTime: atMs, event: decision.event });
+        // A bid inside the anti-snipe window pushes endsAtMs out; re-arm so
+        // the alarm still fires at the (possibly new) real deadline instead
+        // of the one that was current when the room was initialised.
+        await this.ctx.storage.setAlarm(this.cached.endsAtMs);
         return;
+      }
+    }
+  }
+
+  /**
+   * The server-owned clock: closes the auction once its deadline has
+   * passed, otherwise re-arms for whatever the current deadline is (an
+   * anti-snipe extension can move it out from under an alarm that was
+   * scheduled before the extension landed). `closeAuction` from
+   * `@openbid/auction-core` decides the winner — this method only appends
+   * the resulting event, broadcasts it, and queues the archive; no winner
+   * logic lives here.
+   */
+  override async alarm(): Promise<void> {
+    const state = this.state();
+    if (state === null) {
+      // No config yet (should not happen in practice — nothing arms an
+      // alarm before /init does), but there could still be outbox rows
+      // left over from a prior life of this object id. Drain regardless.
+      await this.drainOutbox();
+      return;
+    }
+
+    if (state.status === "open") {
+      if (Date.now() >= state.endsAtMs) {
+        const closed = closeAuction(state, Date.now());
+        if (closed !== null) {
+          const seq = appendEvent(this.ctx.storage.sql, closed);
+          this.cached = reduce(state, closed);
+          this.broadcast({ t: "delta", seq, serverTime: Date.now(), event: closed });
+
+          const winnerId = this.cached.winner?.participantId ?? null;
+          const record: SettlementRecord = {
+            roomId: getMeta(this.ctx.storage.sql, "roomId") ?? this.ctx.id.toString(),
+            itemName: state.config.itemName,
+            startingPrice: state.config.startingPrice,
+            winnerNickname:
+              winnerId === null ? null : this.cached.participants[winnerId]?.nickname ?? null,
+            winningPrice: this.cached.winner?.amount ?? null,
+            closedAtMs: Date.now(),
+            bidLog: readEventsSince(this.ctx.storage.sql, 0).map((row) => row.event),
+          };
+          this.ctx.storage.sql.exec(
+            "INSERT INTO outbox (payload) VALUES (?)",
+            JSON.stringify(record)
+          );
+        }
+      } else {
+        // The deadline moved out from under this alarm (an anti-snipe
+        // extension landed between when it was scheduled and when it
+        // fired). Come back at the real deadline instead of closing early.
+        await this.ctx.storage.setAlarm(state.endsAtMs);
+      }
+    }
+
+    await this.drainOutbox();
+  }
+
+  /**
+   * Best-effort archive to Neon. Anything that fails to write — a bad
+   * DATABASE_URL, a network error, Postgres being down — stays queued and
+   * is retried on the next alarm; a Neon outage must never be able to lose
+   * a settlement or block a live room.
+   */
+  private async drainOutbox(): Promise<void> {
+    const rows = this.ctx.storage.sql
+      .exec<{ id: number; payload: string }>("SELECT id, payload FROM outbox ORDER BY id ASC")
+      .toArray();
+    if (rows.length === 0) return;
+
+    let anyFailed = false;
+    for (const row of rows) {
+      try {
+        await archiveSettlement(this.roomEnv.DATABASE_URL, JSON.parse(row.payload));
+        this.ctx.storage.sql.exec("DELETE FROM outbox WHERE id = ?", row.id);
+      } catch {
+        anyFailed = true;
+      }
+    }
+
+    if (anyFailed) {
+      // A Durable Object has exactly one alarm. If the auction is still
+      // open, that alarm *is* the expiry clock, and this retry must never
+      // push it later than it already is — doing so would mean the
+      // auction can never close on time. Setting an *earlier* alarm is
+      // always safe: when it fires, `alarm()` above sees the auction is
+      // still open and re-arms for the real deadline, so the expiry
+      // guarantee survives even if this races ahead of it. Once the room
+      // is closed there is no expiry alarm to protect, so this simply
+      // schedules the next retry.
+      const retryAt = Date.now() + 60_000;
+      const existing = await this.ctx.storage.getAlarm();
+      if (existing === null || retryAt < existing) {
+        await this.ctx.storage.setAlarm(retryAt);
       }
     }
   }

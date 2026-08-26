@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@openbid/auction-core": "*",
     "@openbid/protocol": "*"
   },

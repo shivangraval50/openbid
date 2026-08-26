@@ -9,3 +9,7 @@ class_name = "RoomDO"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomDO"]
+
+[vars]
+# Set the real value with: npx wrangler secret put DATABASE_URL
+DATABASE_URL = ""
