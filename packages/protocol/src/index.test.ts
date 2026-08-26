@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { ZodError } from "zod";
-import { auctionConfigSchema, parseClientMessage, parseServerMessage, encode } from "./index.js";
+import {
+  auctionConfigSchema,
+  lobbyRegisterSchema,
+  lobbyPriceSchema,
+  parseClientMessage,
+  parseServerMessage,
+  encode,
+} from "./index.js";
 
 describe("parseClientMessage", () => {
   it("accepts a bid", () => {
@@ -73,6 +80,50 @@ describe("auctionConfigSchema", () => {
   it("rejects a config missing a required field", () => {
     const { endsAtMs, ...rest } = valid;
     expect(() => auctionConfigSchema.parse(rest)).toThrow(ZodError);
+  });
+});
+
+describe("lobbyRegisterSchema", () => {
+  const valid = { roomId: "alpha", itemName: "A rare compiler", endsAtMs: Date.now() + 600_000 };
+
+  it("accepts a well-formed registration", () => {
+    expect(lobbyRegisterSchema.parse(valid)).toEqual(valid);
+  });
+
+  it("rejects an empty body", () => {
+    expect(() => lobbyRegisterSchema.parse({})).toThrow(ZodError);
+  });
+
+  it("rejects an empty roomId", () => {
+    expect(() => lobbyRegisterSchema.parse({ ...valid, roomId: "" })).toThrow(ZodError);
+  });
+
+  it("rejects a non-numeric endsAtMs", () => {
+    expect(() => lobbyRegisterSchema.parse({ ...valid, endsAtMs: "soon" })).toThrow(ZodError);
+  });
+});
+
+describe("lobbyPriceSchema", () => {
+  it("accepts a null highBid with an open status", () => {
+    expect(lobbyPriceSchema.parse({ highBid: null, status: "open" })).toEqual({
+      highBid: null,
+      status: "open",
+    });
+  });
+
+  it("accepts a numeric highBid with a closed status", () => {
+    expect(lobbyPriceSchema.parse({ highBid: 250, status: "closed" })).toEqual({
+      highBid: 250,
+      status: "closed",
+    });
+  });
+
+  it("rejects an unknown status", () => {
+    expect(() => lobbyPriceSchema.parse({ highBid: 100, status: "pending" })).toThrow(ZodError);
+  });
+
+  it("rejects a negative highBid", () => {
+    expect(() => lobbyPriceSchema.parse({ highBid: -5, status: "open" })).toThrow(ZodError);
   });
 });
 

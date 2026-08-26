@@ -31,6 +31,26 @@ export const auctionConfigSchema = z.object({
 });
 export type AuctionConfig = z.infer<typeof auctionConfigSchema>;
 
+// The shape of `POST /lobby/rooms`'s body. Also a real cross-boundary
+// contract — Task 13's web app produces this when a room is created — so it
+// gets the same treatment as `auctionConfigSchema` above rather than a cast.
+export const lobbyRegisterSchema = z.object({
+  roomId: z.string().min(1),
+  itemName: z.string().min(1),
+  endsAtMs: z.number().finite(),
+});
+export type LobbyRegister = z.infer<typeof lobbyRegisterSchema>;
+
+// The shape of `POST /lobby/rooms/:roomId/price`'s body. Only `RoomDO`'s own
+// notifier ever produces this one, but it crosses the same Worker-request
+// boundary as the two contracts above, so it is validated the same way
+// rather than trusted because the caller happens to be in-repo.
+export const lobbyPriceSchema = z.object({
+  highBid: money.nullable(),
+  status: z.enum(["open", "closed"]),
+});
+export type LobbyPrice = z.infer<typeof lobbyPriceSchema>;
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   z.object({ t: z.literal("hello"), lastSeenSeq: seq, nickname: z.string().min(1).max(32) }),
   z.object({ t: z.literal("bid"), clientSeq: seq, amount: money }),

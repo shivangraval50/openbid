@@ -39,9 +39,14 @@ interface Attachment {
  * entry — see the comment in `wrangler.toml`. With no `[vars]` entry, an
  * unset secret surfaces as `undefined` rather than `""`; `archiveSettlement`
  * treats the two identically.
+ *
+ * `LOBBY` is always bound (see `wrangler.toml`): it is how this room pushes
+ * its live price to the singleton `LobbyDO` registry so the lobby page never
+ * has to fan out to every room to render.
  */
 export interface RoomEnv {
   DATABASE_URL?: string;
+  LOBBY: DurableObjectNamespace;
 }
 
 /** Above this many missed events, a reconnecting client gets a fresh
@@ -119,6 +124,38 @@ export class RoomDO extends DurableObject {
         // Same as `send`: a socket that's mid-close must not take the rest
         // of the room down with it.
       }
+    }
+  }
+
+  /**
+   * Best-effort push of this room's live price to the lobby cache. Called
+   * after an accepted bid and after settlement — the only two events that
+   * change what the lobby should show — and never anywhere on the reject
+   * path, since a rejected bid changes nothing worth caching.
+   *
+   * Deliberately swallows every failure. The lobby is a convenience cache,
+   * not part of this room's authority: a stale price there is acceptable, a
+   * bid or an alarm firing that fails because the lobby happened to be
+   * unreachable is not. Nothing here is awaited by, or allowed to affect,
+   * the caller's own success/failure outcome.
+   */
+  private async notifyLobby(): Promise<void> {
+    const state = this.cached;
+    const roomId = getMeta(this.ctx.storage.sql, "roomId");
+    if (state === null || roomId === null) return;
+
+    try {
+      const stub = this.roomEnv.LOBBY.get(this.roomEnv.LOBBY.idFromName("global"));
+      await stub.fetch(`https://lobby/lobby/rooms/${roomId}/price`, {
+        method: "POST",
+        body: JSON.stringify({
+          highBid: state.highBid?.amount ?? null,
+          status: state.status,
+        }),
+      });
+    } catch {
+      // See the doc comment above: a lobby write problem must never
+      // propagate into the bid path or the alarm handler.
     }
   }
 
@@ -309,6 +346,7 @@ export class RoomDO extends DurableObject {
         // the alarm still fires at the (possibly new) real deadline instead
         // of the one that was current when the room was initialised.
         await this.ctx.storage.setAlarm(this.cached.endsAtMs);
+        await this.notifyLobby();
         return;
       }
     }
@@ -340,6 +378,7 @@ export class RoomDO extends DurableObject {
           const seq = appendEvent(this.ctx.storage.sql, closed);
           this.cached = reduce(state, closed);
           this.broadcast({ t: "delta", seq, serverTime: Date.now(), event: closed });
+          await this.notifyLobby();
 
           const winnerId = this.cached.winner?.participantId ?? null;
           const record: SettlementRecord = {

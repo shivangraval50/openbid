@@ -6,9 +6,18 @@ compatibility_date = "2026-03-10"
 name = "ROOMS"
 class_name = "RoomDO"
 
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "LobbyDO"
+
+# Nothing has deployed yet (that is Task 19's job), so this class list can
+# still be edited in place under the same "v1" tag. Cloudflare migrations are
+# append-only *once applied* — after the first real `wrangler deploy`, adding
+# a Durable Object class must go in a new [[migrations]] block with its own
+# tag, never by editing this one.
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["RoomDO"]
+new_sqlite_classes = ["RoomDO", "LobbyDO"]
 
 # DATABASE_URL is deliberately NOT declared here as a [vars] entry. A
 # plaintext [vars] value takes precedence over a Workers *secret* of the
