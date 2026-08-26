@@ -1,0 +1,5 @@
+{
+  "name": "@openbid/web",
+  "private": true,
+  "type": "module"
+}
