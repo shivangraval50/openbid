@@ -1,0 +1,15 @@
+{
+  "name": "@openbid/charts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/priceChart.ts",
+  "types": "./src/priceChart.ts",
+  "dependencies": {
+    "d3-scale": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/d3-scale": "^4.0.9",
+    "jsdom": "^30.0.1"
+  }
+}
