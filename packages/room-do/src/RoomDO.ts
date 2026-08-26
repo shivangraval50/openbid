@@ -21,10 +21,12 @@ import {
   putMeta,
   readEventsSince,
 } from "./sql.js";
+import { newBucket, takeToken, type Bucket } from "./ratelimit.js";
 
 interface Attachment {
   participantId: string;
   nickname: string;
+  bucket: Bucket;
 }
 
 /** Above this many missed events, a reconnecting client gets a fresh
@@ -184,7 +186,11 @@ export class RoomDO extends DurableObject {
         }
 
         const participantId = crypto.randomUUID();
-        ws.serializeAttachment({ participantId, nickname: msg.nickname } satisfies Attachment);
+        ws.serializeAttachment({
+          participantId,
+          nickname: msg.nickname,
+          bucket: newBucket(Date.now()),
+        } satisfies Attachment);
 
         const atMs = Date.now();
 
@@ -237,6 +243,18 @@ export class RoomDO extends DurableObject {
         }
 
         const atMs = Date.now();
+
+        // Checked before validateBid, and unconditionally persisted back to
+        // the attachment whether or not the bid is allowed: a flood must
+        // cost no rule evaluation, and a token spent on a rejected bid must
+        // still count against the bucket or the limit is not a limit.
+        const limit = takeToken(attachment.bucket, atMs);
+        ws.serializeAttachment({ ...attachment, bucket: limit.bucket } satisfies Attachment);
+        if (!limit.allowed) {
+          this.send(ws, { t: "reject", clientSeq: msg.clientSeq, reason: "RATE_LIMITED" });
+          return;
+        }
+
         const decision = validateBid(state, {
           participantId: attachment.participantId,
           amount: msg.amount,
