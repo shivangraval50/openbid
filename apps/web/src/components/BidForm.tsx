@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RejectReason } from "@openbid/protocol";
 
 const REJECT_COPY: Record<RejectReason, string> = {
@@ -18,13 +18,24 @@ export function BidForm(props: {
 }) {
   const [value, setValue] = useState(String(props.minimum));
   const [localError, setLocalError] = useState<string | null>(null);
+  // Tracks the minimum the field was last synced to (starts equal to the
+  // initial value above, since that's what the field holds on mount).
+  const syncedMinimumRef = useRef(props.minimum);
 
-  // Follow the minimum upward as the auction moves, but never fight the user
-  // mid-edit: only resync when the field still holds a stale minimum.
+  // Follow the minimum upward as the auction moves, but never fight the
+  // user mid-edit. "Stale" specifically means: the field still holds
+  // exactly the *previous* minimum, verbatim -- not merely "a number below
+  // the new one". A numeric `<` comparison against the new minimum alone
+  // can't tell a genuinely stale, untouched field apart from a half-typed
+  // replacement (typing "500" one digit at a time briefly reads as "5",
+  // "50" -- both "below" almost any minimum) or a deliberately cleared one
+  // (`Number("") === 0`, also "below"); either would otherwise get
+  // silently overwritten mid-edit.
   useEffect(() => {
     setValue((current) =>
-      Number(current) < props.minimum ? String(props.minimum) : current
+      current === String(syncedMinimumRef.current) ? String(props.minimum) : current
     );
+    syncedMinimumRef.current = props.minimum;
   }, [props.minimum]);
 
   function submit(event: React.FormEvent): void {

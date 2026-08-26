@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { initialState, minimumBid, validateBid, reduce } from "./index.js";
-import type { AuctionConfig } from "./types.js";
+import { initialState, minimumBid, validateBid, reduce } from "./index";
+import type { AuctionConfig } from "./types";
 
 const config: AuctionConfig = {
   itemName: "A rare compiler",

@@ -1,4 +1,4 @@
-import type { AuctionEvent, AuctionState, RejectReason } from "./types.js";
+import type { AuctionEvent, AuctionState, RejectReason } from "./types";
 
 export function minimumBid(state: AuctionState): number {
   return state.highBid === null

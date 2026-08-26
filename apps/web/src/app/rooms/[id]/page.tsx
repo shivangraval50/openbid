@@ -16,6 +16,7 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
       <LiveRoom
         roomId={id}
         initialSeq={snapshot.seq}
+        initialServerTime={snapshot.serverTime}
         initialState={snapshot.state}
         socketBaseUrl={process.env.NEXT_PUBLIC_ROOMS_BASE_URL ?? ""}
       />

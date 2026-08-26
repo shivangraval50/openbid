@@ -43,6 +43,13 @@ export function connectRoom(opts: {
           nickname: opts.nickname,
         })
       );
+      // Ping immediately, rather than waiting for the first 5s interval
+      // tick, so the clock-offset correction lands within one round trip
+      // of connecting. Auction timing must never run on the untrusted
+      // local clock for longer than that -- and it otherwise would, for
+      // the first 5+ seconds of every single connection (and for the rest
+      // of the session if pongs never arrive at all).
+      ws?.send(encode({ t: "ping", clientTime: Date.now() }));
       pingTimer = setInterval(() => {
         ws?.send(encode({ t: "ping", clientTime: Date.now() }));
       }, 5_000);

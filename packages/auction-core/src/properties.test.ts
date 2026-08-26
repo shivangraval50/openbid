@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { initialState, minimumBid, reduce, validateBid, closeAuction } from "./index.js";
-import type { AuctionConfig, AuctionState } from "./types.js";
+import { initialState, minimumBid, reduce, validateBid, closeAuction } from "./index";
+import type { AuctionConfig, AuctionState } from "./types";
 
 // startingBudget lowered from the brief's 10_000 to 1_200 against the amount
 // range [1, 2_000]: ~40% of generated amounts (1_200..2_000) exceed the

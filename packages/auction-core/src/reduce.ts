@@ -1,4 +1,4 @@
-import type { AuctionConfig, AuctionEvent, AuctionState } from "./types.js";
+import type { AuctionConfig, AuctionEvent, AuctionState } from "./types";
 
 export function initialState(config: AuctionConfig): AuctionState {
   return {

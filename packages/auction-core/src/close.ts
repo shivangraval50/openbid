@@ -1,4 +1,4 @@
-import type { AuctionEvent, AuctionState } from "./types.js";
+import type { AuctionEvent, AuctionState } from "./types";
 
 export function closeAuction(state: AuctionState, atMs: number): AuctionEvent | null {
   if (state.status === "closed") return null;

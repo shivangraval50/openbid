@@ -91,4 +91,37 @@ describe("BidForm", () => {
     rerender(<BidForm minimum={120} disabled={false} rejectReason={null} onBid={vi.fn()} />);
     expect(screen.getByLabelText(/your bid/i)).toHaveValue(120);
   });
+
+  // This is the actual case the "don't fight the user mid-edit" requirement
+  // names, and the case a naive `Number(current) < props.minimum` check
+  // does NOT cover: a half-typed replacement value that happens to look
+  // numerically low. The user means to type "500" but has only typed "5"
+  // so far when a rival bid lifts the minimum past it -- a comparison
+  // against the *new* minimum alone can't tell "half-typed" from "stale",
+  // and would destroy the in-progress keystroke.
+  it("does not clobber a half-typed replacement value, even though it now looks too low", async () => {
+    const { rerender } = render(
+      <BidForm minimum={120} disabled={false} rejectReason={null} onBid={vi.fn()} />
+    );
+    const input = screen.getByLabelText(/your bid/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, "5"); // still typing toward "500"
+
+    rerender(<BidForm minimum={130} disabled={false} rejectReason={null} onBid={vi.fn()} />);
+    expect(screen.getByLabelText(/your bid/i)).toHaveValue(5);
+  });
+
+  // The other example the requirement calls out: a deliberately cleared
+  // field. `Number("") === 0`, so the same naive `<` comparison would treat
+  // an empty field as "stale" and refill it against the user's intent.
+  it("does not refill a deliberately cleared field", async () => {
+    const { rerender } = render(
+      <BidForm minimum={120} disabled={false} rejectReason={null} onBid={vi.fn()} />
+    );
+    const input = screen.getByLabelText(/your bid/i);
+    await userEvent.clear(input);
+
+    rerender(<BidForm minimum={130} disabled={false} rejectReason={null} onBid={vi.fn()} />);
+    expect(screen.getByLabelText(/your bid/i)).toHaveValue(null);
+  });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { initialState, type AuctionConfig, type AuctionState } from "@openbid/auction-core";
 import {
   createAuctionStore,
@@ -104,6 +104,56 @@ describe("seedFromSnapshot", () => {
       youAre: "me",
     });
     expect(store.getState().youAre).toBe("me");
+  });
+
+  // Catches: an implementation with no monotonicity guard at all. A
+  // reachable regression path is an SSR re-seed (e.g. a `router.refresh()`
+  // whose refetch was issued before the socket had applied deltas up to
+  // seq 50, returning a stale seq 40): without this guard, `server`
+  // silently regresses and `lastSeenSeq` drops to 40, and 41-50 are never
+  // redelivered since the DO only replays on a fresh `hello`. Also asserts
+  // that a blocked call leaves `pending` untouched -- a guard that skips
+  // only the `lastSeenSeq`/`server` assignment but still wipes `pending`
+  // would silently drop an in-flight optimistic bid with no ack, reject,
+  // or feedback, which is just as bad as the seq regression itself.
+  it("ignores a seed at or below lastSeenSeq once server state already exists", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(50, 5_000, seededState());
+    const clientSeq = store.getState().placeOptimisticBid(250);
+    const serverBefore = store.getState().server;
+
+    store.getState().seedFromSnapshot(40, 4_000, seededState());
+
+    expect(store.getState().lastSeenSeq).toBe(50);
+    expect(store.getState().server).toBe(serverBefore);
+    expect(store.getState().pending.map((p) => p.clientSeq)).toEqual([clientSeq]);
+  });
+
+  // The very first seed must never be blocked by the guard above, even
+  // when called with seq 0 against a brand-new store (whose lastSeenSeq
+  // also starts at 0) -- the guard's job is to reject *regressions once
+  // there is real server state*, not to require a positive seq.
+  it("still applies the very first seed even at seq 0", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(0, 1_000, seededState());
+    expect(store.getState().server?.config.itemName).toBe("store");
+    expect(store.getState().lastSeenSeq).toBe(0);
+  });
+
+  // Catches: leaving the client on its own untrusted clock for the entire
+  // window between first paint and the first real pong. `serverTime` was
+  // previously accepted as a parameter and silently discarded; it must now
+  // seed a provisional `clockOffsetMs` so the very first countdown render
+  // is already server-corrected, not exactly 0 (the "trust local clock"
+  // default) purely by coincidence of timing.
+  it("derives a provisional clock offset from the seeded serverTime", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const store = createAuctionStore();
+    // The server reports a time 5s ahead of this (fake) local clock.
+    store.getState().seedFromSnapshot(4, 1_005_000, seededState());
+    expect(store.getState().clockOffsetMs).toBe(5_000);
+    vi.useRealTimers();
   });
 });
 

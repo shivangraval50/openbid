@@ -117,8 +117,34 @@ export function createAuctionStore(): AuctionStore {
     // invariant the server actually satisfies on every socket snapshot.
     // Identity becomes known only once the socket's own "snapshot" message
     // arrives and goes through `applyServerMessage` normally.
-    seedFromSnapshot: (seq, _serverTime, state) => {
-      set({ server: state, lastSeenSeq: seq, pending: [] });
+    //
+    // Guarded like the `delta` case above, for the same reason: once real
+    // server state exists, a seed at or below `lastSeenSeq` must be a
+    // no-op, not a regression. The reachable path is an SSR re-seed (e.g.
+    // a `router.refresh()` whose HTTP refetch was issued before the socket
+    // had applied deltas the refetch doesn't yet reflect) -- without this
+    // guard, `server` would silently walk backwards and `lastSeenSeq`
+    // would drop, and the seqs in between are never redelivered, since the
+    // DO only replays on a fresh `hello`. The very first seed against a
+    // brand-new store is never blocked: `server` is still `null` then,
+    // regardless of what `seq` is.
+    //
+    // Also derives a provisional `clockOffsetMs` from `serverTime` (the
+    // seeded snapshot's server-reported time). This is intentionally rough
+    // -- unlike `observeClock`, there is no round trip to correct for here,
+    // since the SSR fetch never told the server anything the client can
+    // measure a receipt time against -- but it is strictly better than the
+    // `0` (i.e. "trust the local clock") default, and closes most of the
+    // window before the socket's first real pong lands.
+    seedFromSnapshot: (seq, serverTime, state) => {
+      const current = get();
+      if (current.server !== null && seq <= current.lastSeenSeq) return;
+      set({
+        server: state,
+        lastSeenSeq: seq,
+        pending: [],
+        clockOffsetMs: serverTime - Date.now(),
+      });
     },
 
     placeOptimisticBid: (amount) => {
