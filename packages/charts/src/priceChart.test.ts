@@ -67,4 +67,49 @@ describe("createPriceChart", () => {
     chart.push({ tMs: 2, price: 200 });
     expect(chart.points()).toHaveLength(1);
   });
+
+  it("does not throw when getContext returns null", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 400;
+    canvas.height = 200;
+    vi.spyOn(canvas, "getContext").mockReturnValue(null);
+    const chart = createPriceChart(canvas);
+    chart.push({ tMs: 1, price: 100 });
+    chart.push({ tMs: 2, price: 150 });
+    expect(() => chart.render()).not.toThrow();
+  });
+
+  it("handles degenerate time domain (all points at same tMs)", () => {
+    const canvas = fakeCanvas();
+    const chart = createPriceChart(canvas);
+    // All points share the same tMs; the domain guard should prevent NaN
+    chart.push({ tMs: 100, price: 100 });
+    chart.push({ tMs: 100, price: 150 });
+    chart.push({ tMs: 100, price: 200 });
+    chart.render();
+    const ctx = canvas.getContext("2d") as unknown as { moveTo: { mock: { calls: Array<Array<number>> } }; lineTo: { mock: { calls: Array<Array<number>> } } };
+    // All coordinates should be finite (not NaN)
+    const allCalls = [...ctx.moveTo.mock.calls, ...ctx.lineTo.mock.calls];
+    allCalls.forEach(([x, y]) => {
+      expect(Number.isFinite(x)).toBe(true);
+      expect(Number.isFinite(y)).toBe(true);
+    });
+  });
+
+  it("handles degenerate price domain (all points at same price)", () => {
+    const canvas = fakeCanvas();
+    const chart = createPriceChart(canvas);
+    // All points share the same price; the domain guard should prevent NaN
+    chart.push({ tMs: 1, price: 150 });
+    chart.push({ tMs: 2, price: 150 });
+    chart.push({ tMs: 3, price: 150 });
+    chart.render();
+    const ctx = canvas.getContext("2d") as unknown as { moveTo: { mock: { calls: Array<Array<number>> } }; lineTo: { mock: { calls: Array<Array<number>> } } };
+    // All coordinates should be finite (not NaN)
+    const allCalls = [...ctx.moveTo.mock.calls, ...ctx.lineTo.mock.calls];
+    allCalls.forEach(([x, y]) => {
+      expect(Number.isFinite(x)).toBe(true);
+      expect(Number.isFinite(y)).toBe(true);
+    });
+  });
 });
