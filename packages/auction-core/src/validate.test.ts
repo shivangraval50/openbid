@@ -54,8 +54,11 @@ describe("validateBid", () => {
   });
 
   it("checks TOO_LOW before INSUFFICIENT_BUDGET when both apply", () => {
-    const state = withParticipants("ada");
-    const decision = validateBid(state, { participantId: "ada", amount: 0.5, atMs: 1 });
+    // startingBudget (50) is below startingPrice (100), so a bid of 75 is
+    // simultaneously below the minimum and above the bidder's budget.
+    const poorConfig: AuctionConfig = { ...config, startingBudget: 50 };
+    const state = reduce(initialState(poorConfig), joined("ada"));
+    const decision = validateBid(state, { participantId: "ada", amount: 75, atMs: 1 });
     expect(decision).toEqual({ ok: false, reason: "TOO_LOW" });
   });
 
