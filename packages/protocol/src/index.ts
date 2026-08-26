@@ -22,9 +22,9 @@ const money = z.number().finite().positive();
 // room-do's typecheck, not a runtime surprise.
 export const auctionConfigSchema = z.object({
   itemName: z.string().min(1),
-  startingPrice: z.number().finite(),
-  minIncrement: z.number().finite(),
-  startingBudget: z.number().finite(),
+  startingPrice: money,
+  minIncrement: money,
+  startingBudget: money,
   antiSnipeWindowMs: z.number().finite(),
   antiSnipeExtensionMs: z.number().finite(),
   endsAtMs: z.number().finite(),

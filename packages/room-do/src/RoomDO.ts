@@ -27,6 +27,28 @@ interface Attachment {
   nickname: string;
 }
 
+/** Above this many missed events, a reconnecting client gets a fresh
+ * snapshot instead of a long replay. */
+export const SNAPSHOT_THRESHOLD = 500;
+
+/**
+ * Decide whether a `hello` should be answered with a replay of the events
+ * the client missed, versus a snapshot alone.
+ *
+ * `lastSeenSeq === 0` means "I have not seen anything yet" — a brand-new
+ * joiner, not a resuming one — and is always answered with a snapshot only,
+ * never a replay (a replay of "everything since the beginning" is exactly
+ * what the snapshot already is, just less efficiently). Otherwise, replay
+ * when the gap between what the client has seen and the current sequence is
+ * at most `threshold`; a wider gap gets a snapshot instead.
+ *
+ * Pure transport bookkeeping — no auction rule lives here.
+ */
+export function shouldReplay(lastSeenSeq: number, currentSeq: number, threshold: number): boolean {
+  if (lastSeenSeq <= 0) return false;
+  return currentSeq - lastSeenSeq <= threshold;
+}
+
 export class RoomDO extends DurableObject {
   private cached: AuctionState | null = null;
 
@@ -164,19 +186,32 @@ export class RoomDO extends DurableObject {
         const participantId = crypto.randomUUID();
         ws.serializeAttachment({ participantId, nickname: msg.nickname } satisfies Attachment);
 
+        const atMs = Date.now();
         const joinEvent = {
           type: "joined" as const,
           participantId,
           nickname: msg.nickname,
-          atMs: Date.now(),
+          atMs,
         };
         const joinSeq = appendEvent(this.ctx.storage.sql, joinEvent);
         this.cached = reduce(state, joinEvent);
 
+        // Resume: hand back exactly the events this client has not seen yet,
+        // unless it is far enough behind that `shouldReplay` prefers a fresh
+        // snapshot instead. This includes the join event just appended above
+        // (its seq is always > msg.lastSeenSeq here), so the joiner also
+        // receives its own join as a replayed delta — harmless, see the
+        // broadcast comment below.
+        if (shouldReplay(msg.lastSeenSeq, joinSeq, SNAPSHOT_THRESHOLD)) {
+          for (const row of readEventsSince(this.ctx.storage.sql, msg.lastSeenSeq)) {
+            this.send(ws, { t: "delta", seq: row.seq, serverTime: atMs, event: row.event });
+          }
+        }
+
         this.send(ws, {
           t: "snapshot",
           seq: joinSeq,
-          serverTime: Date.now(),
+          serverTime: atMs,
           state: { ...this.cached, youAre: participantId },
         });
         // Already-connected clients need to learn about the new participant
@@ -184,7 +219,7 @@ export class RoomDO extends DurableObject {
         // gets a hole at joinSeq. `reduce`'s "joined" case is idempotent for
         // an existing participant, so re-delivering this to the joiner (via
         // broadcast, in addition to the snapshot above) is harmless.
-        this.broadcast({ t: "delta", seq: joinSeq, serverTime: Date.now(), event: joinEvent });
+        this.broadcast({ t: "delta", seq: joinSeq, serverTime: atMs, event: joinEvent });
         return;
       }
 

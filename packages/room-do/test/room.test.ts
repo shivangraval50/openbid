@@ -237,6 +237,19 @@ describe("RoomDO", () => {
     expect(snap.status).toBe(404);
   });
 
+  it("400s init with a negative starting price", async () => {
+    const id = roomId("bad-price");
+    const res = await SELF.fetch(`https://x/rooms/${id}/init`, {
+      method: "POST",
+      body: JSON.stringify({ ...config, startingPrice: -50 }),
+    });
+    expect(res.status).toBe(400);
+
+    // Same half-initialised guard as the malformed-body case above.
+    const snap = await SELF.fetch(`https://x/rooms/${id}/snapshot`);
+    expect(snap.status).toBe(404);
+  });
+
   it("broadcasts a joined event to already-connected clients", async () => {
     const id = roomId("join-broadcast");
     await initRoom(id);
