@@ -44,9 +44,9 @@ export const SNAPSHOT_THRESHOLD = 500;
  *
  * Pure transport bookkeeping — no auction rule lives here.
  */
-export function shouldReplay(lastSeenSeq: number, currentSeq: number, threshold: number): boolean {
+export function shouldReplay(lastSeenSeq: number, latestSeq: number, threshold: number): boolean {
   if (lastSeenSeq <= 0) return false;
-  return currentSeq - lastSeenSeq <= threshold;
+  return latestSeq - lastSeenSeq <= threshold;
 }
 
 export class RoomDO extends DurableObject {
@@ -187,6 +187,24 @@ export class RoomDO extends DurableObject {
         ws.serializeAttachment({ participantId, nickname: msg.nickname } satisfies Attachment);
 
         const atMs = Date.now();
+
+        // Resume: hand back exactly the events this client has not seen yet,
+        // unless it is far enough behind that `shouldReplay` prefers a fresh
+        // snapshot instead. This runs — and the decision is made — *before*
+        // this socket's own `joined` event is appended below, specifically
+        // so that event can never appear twice: once here (were it appended
+        // first, its seq would always be > msg.lastSeenSeq, so it would
+        // always land in the replay set) and again via the broadcast a few
+        // lines down, which reaches every socket in the room including this
+        // one. Deciding against the log's state as of *before* this hello
+        // keeps the join a single, broadcast-only delivery.
+        const preJoinSeq = currentSeq(this.ctx.storage.sql);
+        if (shouldReplay(msg.lastSeenSeq, preJoinSeq, SNAPSHOT_THRESHOLD)) {
+          for (const row of readEventsSince(this.ctx.storage.sql, msg.lastSeenSeq)) {
+            this.send(ws, { t: "delta", seq: row.seq, serverTime: atMs, event: row.event });
+          }
+        }
+
         const joinEvent = {
           type: "joined" as const,
           participantId,
@@ -195,18 +213,6 @@ export class RoomDO extends DurableObject {
         };
         const joinSeq = appendEvent(this.ctx.storage.sql, joinEvent);
         this.cached = reduce(state, joinEvent);
-
-        // Resume: hand back exactly the events this client has not seen yet,
-        // unless it is far enough behind that `shouldReplay` prefers a fresh
-        // snapshot instead. This includes the join event just appended above
-        // (its seq is always > msg.lastSeenSeq here), so the joiner also
-        // receives its own join as a replayed delta — harmless, see the
-        // broadcast comment below.
-        if (shouldReplay(msg.lastSeenSeq, joinSeq, SNAPSHOT_THRESHOLD)) {
-          for (const row of readEventsSince(this.ctx.storage.sql, msg.lastSeenSeq)) {
-            this.send(ws, { t: "delta", seq: row.seq, serverTime: atMs, event: row.event });
-          }
-        }
 
         this.send(ws, {
           t: "snapshot",

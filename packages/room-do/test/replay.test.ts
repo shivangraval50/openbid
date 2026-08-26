@@ -103,6 +103,41 @@ describe("reconnect and replay", () => {
     );
     expect(staleDeltas).toEqual([]);
   });
+
+  it("delivers each seq to a resuming client at most once", async () => {
+    const id = roomId("noduplicate");
+    await init(id);
+    const first = await connect(id, "ada");
+    const snapshot = await waitFor(first.inbox, (m) => m.t === "snapshot", "snapshot");
+    const seenSeq = (snapshot as { seq: number }).seq;
+
+    first.ws.send(encode({ t: "bid", clientSeq: 1, amount: 100 }));
+    await waitFor(first.inbox, (m) => m.t === "ack", "ack");
+
+    // grace resumes at seenSeq, which triggers a replay (the gap is 1
+    // event: ada's bid). The regression this guards: the hello branch used
+    // to append grace's own `joined` event *before* deciding what to
+    // replay, so that event's seq was always > lastSeenSeq and always
+    // landed in the replay set — and then got sent *again* by the
+    // broadcast a few lines later, which reaches every socket in the room
+    // including the one that just joined. Wait for that broadcast (sent
+    // after the snapshot) so every message this hello produces has had a
+    // chance to land before asserting.
+    const second = await connect(id, "grace", seenSeq);
+    await waitFor(
+      second.inbox,
+      (m) =>
+        m.t === "delta" &&
+        (m as { event?: { type?: string; nickname?: string } }).event?.type === "joined" &&
+        (m as { event?: { type?: string; nickname?: string } }).event?.nickname === "grace",
+      "grace's own join broadcast"
+    );
+
+    const deltaSeqs = second.inbox
+      .filter((m) => m.t === "delta")
+      .map((m) => (m as { seq: number }).seq);
+    expect(deltaSeqs).toEqual([...new Set(deltaSeqs)]);
+  });
 });
 
 // The brief's original third test only asserted "a snapshot message

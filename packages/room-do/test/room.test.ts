@@ -250,6 +250,30 @@ describe("RoomDO", () => {
     expect(snap.status).toBe(404);
   });
 
+  it("400s init with a negative minIncrement", async () => {
+    const id = roomId("bad-increment");
+    const res = await SELF.fetch(`https://x/rooms/${id}/init`, {
+      method: "POST",
+      body: JSON.stringify({ ...config, minIncrement: -10 }),
+    });
+    expect(res.status).toBe(400);
+
+    const snap = await SELF.fetch(`https://x/rooms/${id}/snapshot`);
+    expect(snap.status).toBe(404);
+  });
+
+  it("400s init with a negative startingBudget", async () => {
+    const id = roomId("bad-budget");
+    const res = await SELF.fetch(`https://x/rooms/${id}/init`, {
+      method: "POST",
+      body: JSON.stringify({ ...config, startingBudget: -500 }),
+    });
+    expect(res.status).toBe(400);
+
+    const snap = await SELF.fetch(`https://x/rooms/${id}/snapshot`);
+    expect(snap.status).toBe(404);
+  });
+
   it("broadcasts a joined event to already-connected clients", async () => {
     const id = roomId("join-broadcast");
     await initRoom(id);
