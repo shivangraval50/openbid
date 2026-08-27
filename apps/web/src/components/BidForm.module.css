@@ -28,8 +28,12 @@
     align-items: stretch;
   }
 
+  /* Sized to its content, not to the card. A four-digit amount in a
+   * 1200px-wide box (which is what the first pass produced at 1440) reads as
+   * a text area, not as a number field -- layout.md: "Make essential
+   * information easy to find by giving it sufficient space", not all of it. */
   .field {
-    flex: 1 1 auto;
+    flex: 0 1 14rem;
   }
 }
 

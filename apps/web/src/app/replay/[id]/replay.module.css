@@ -14,6 +14,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--ob-space-5);
+  width: 100%;
+  max-width: 46rem;
 }
 
 .head {
@@ -36,6 +38,11 @@
   line-height: var(--ob-leading-snug);
   letter-spacing: -0.015em;
   overflow-wrap: anywhere;
+}
+
+.subtitle {
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-subhead);
 }
 
 .panel {
@@ -158,18 +165,32 @@
   cursor: pointer;
 }
 
+/* The consumed part of the track is filled, so the thumb's position is not
+ * the only cue to where in the log you are. `--ob-scrub-progress` is set
+ * inline by Scrubber.tsx from the same `position` value the readout prints,
+ * so the two can never disagree. */
 .scrub::-webkit-slider-runnable-track {
   height: 0.25rem;
   border-radius: var(--ob-radius-pill);
-  background: var(--ob-surface-raised);
   border: 1px solid var(--ob-hairline);
+  background: linear-gradient(
+      to right,
+      var(--ob-accent-fill) 0 var(--ob-scrub-progress, 0%),
+      transparent var(--ob-scrub-progress, 0%)
+    ),
+    var(--ob-surface-raised);
 }
 
 .scrub::-moz-range-track {
   height: 0.25rem;
   border-radius: var(--ob-radius-pill);
-  background: var(--ob-surface-raised);
   border: 1px solid var(--ob-hairline);
+  background: linear-gradient(
+      to right,
+      var(--ob-accent-fill) 0 var(--ob-scrub-progress, 0%),
+      transparent var(--ob-scrub-progress, 0%)
+    ),
+    var(--ob-surface-raised);
 }
 
 .scrub::-webkit-slider-thumb {
@@ -194,12 +215,23 @@
   box-shadow: var(--ob-shadow);
 }
 
-/* The ring goes on the control, not on the thumb's own pseudo-element: only
- * the former is reliably drawn across engines. */
+/* The ring goes round the KNOB, which is where the platform puts it on a
+ * slider, and not round the control's box. The control's box is 44px tall
+ * (the hit-target figure from accessibility.md's Mobility table) while its
+ * visible track is 4px, so the default outline drew an enormous rounded
+ * rectangle four times the height of anything visible -- clearly wrong in the
+ * first screenshot pass. `outline: none` is safe here only because the
+ * box-shadow below replaces it unconditionally. */
 .scrub:focus-visible {
-  outline: 2px solid var(--ob-focus);
-  outline-offset: 2px;
-  border-radius: var(--ob-radius-sm);
+  outline: none;
+}
+
+.scrub:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--ob-surface), 0 0 0 4px var(--ob-focus);
+}
+
+.scrub:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--ob-surface), 0 0 0 4px var(--ob-focus);
 }
 
 .hint {
@@ -208,7 +240,12 @@
 }
 
 @media (max-width: 34rem) {
-  .panel {
+  .subtitle {
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-subhead);
+}
+
+.panel {
     padding: var(--ob-space-4);
   }
 

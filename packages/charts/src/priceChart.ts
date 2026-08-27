@@ -25,6 +25,17 @@ export interface PriceChartOptions {
   lineWidth?: number;
   /** Inset from the canvas edge, also in device pixels, for the same reason. */
   padding?: number;
+  /**
+   * Extra vertical room, as a fraction of the observed price range, added
+   * above and below the series before it is scaled into the plot.
+   *
+   * With no headroom the highest and lowest points land exactly on the plot's
+   * top and bottom insets, so the line always appears to touch both edges
+   * regardless of the data -- which reads as a chart that has been clipped
+   * rather than one that has been scaled. Defaults to 0 so that existing
+   * callers are unaffected.
+   */
+  priceHeadroom?: number;
 }
 
 export interface PriceChart {
@@ -44,6 +55,7 @@ export function createPriceChart(
   const maxPoints = opts.maxPoints ?? 600;
   const padding = opts.padding ?? DEFAULT_PADDING;
   const lineWidth = opts.lineWidth ?? DEFAULT_LINE_WIDTH;
+  const priceHeadroom = Math.max(0, opts.priceHeadroom ?? 0);
   const stroke = opts.stroke;
   let buffer: PricePoint[] = [];
   let alive = true;
@@ -65,8 +77,13 @@ export function createPriceChart(
     const x = scaleLinear()
       .domain([tMin, tMax === tMin ? tMin + 1 : tMax])
       .range([padding, width - padding]);
+    // A degenerate range (every point at the same price) still has to produce
+    // a finite domain, so the `+ 1` fallback stays and the headroom is
+    // computed from the *widened* span rather than from zero.
+    const pTop = pMax === pMin ? pMin + 1 : pMax;
+    const headroom = (pTop - pMin) * priceHeadroom;
     const y = scaleLinear()
-      .domain([pMin, pMax === pMin ? pMin + 1 : pMax])
+      .domain([pMin - headroom, pTop + headroom])
       .range([height - padding, padding]);
 
     ctx.beginPath();

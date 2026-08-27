@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { AuctionConfig, AuctionEvent } from "@openbid/auction-core";
 import { replayTo } from "@/lib/replay";
+import { cx } from "@/cx";
 import styles from "./replay.module.css";
 
 /**
@@ -23,6 +24,10 @@ export function Scrubber({
   const [position, setPosition] = useState(events.length);
   const state = replayTo(config, events, position);
   const price = state.highBid?.amount ?? state.config.startingPrice;
+  // Drives the track's filled portion. Derived from the same `position` the
+  // readout prints, so the fill and the figures cannot disagree. Guarded
+  // against a zero-length log, where every position is the end.
+  const progressPct = events.length === 0 ? 100 : (position / events.length) * 100;
 
   return (
     <section className={styles.panel}>
@@ -36,9 +41,10 @@ export function Scrubber({
         <div className={styles.statusCell}>
           <p className={styles.eyebrow}>Status</p>
           <p
-            className={`${styles.status} ${
+            className={cx(
+              styles.status,
               state.status === "closed" ? styles.statusClosed : styles.statusOpen
-            }`}
+            )}
             data-testid="replay-status"
           >
             {state.status}
@@ -68,6 +74,7 @@ export function Scrubber({
           value={position}
           onChange={(e) => setPosition(Number(e.target.value))}
           className={styles.scrub}
+          style={{ "--ob-scrub-progress": `${progressPct}%` } as React.CSSProperties}
         />
         <p className={styles.hint}>
           Every value above is re-derived from the archived log by the same

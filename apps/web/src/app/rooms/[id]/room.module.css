@@ -98,6 +98,9 @@
 .clockCell {
   display: flex;
   flex-direction: column;
+  /* Trailing edge while the readout is a row (price left, clock right); the
+   * wide and narrow rules below flip it to the leading edge when the readout
+   * becomes a column. Countdown's own `align-items: inherit` follows. */
   align-items: flex-end;
   gap: var(--ob-space-1);
   flex: none;
@@ -110,9 +113,21 @@
 .stats {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--ob-space-2) var(--ob-space-5);
+  align-items: flex-end;
+  gap: var(--ob-space-3) var(--ob-space-5);
   padding-top: var(--ob-space-4);
   border-top: 1px solid var(--ob-hairline);
+}
+
+/* Clock skew is not an auction figure -- it is a statement about how much to
+ * trust the other figures -- so it sits apart, at the trailing end of the
+ * strip, with no label of its own. It had a "CLOCK" label in the first pass,
+ * directly above a value that already begins with the word "clock"; that
+ * stutter, and the way it wrapped and clipped at 390px, is what moved it
+ * here. Its copy is fixed by a test that asserts the unmeasured placeholder
+ * contains no digit at all, so the label had to go rather than the value. */
+.clockStat {
+  margin-inline-start: auto;
 }
 
 .stat {
@@ -148,6 +163,23 @@
   background: var(--ob-surface);
   border: 1px solid var(--ob-hairline);
   border-radius: var(--ob-radius-lg);
+}
+
+/* Once the room is settled the result leads and the (now disabled) form
+ * follows, rather than the reverse -- layout.md, "Place items to convey their
+ * relative importance." The form is ordered second by flex `order` rather
+ * than moved in the markup, so the DOM order the end-to-end suite walks is
+ * untouched. */
+.actions[data-settled="true"] .outcome {
+  order: -1;
+}
+
+/* A closed auction is not an urgent one. `Countdown`'s `data-urgent`
+ * attribute is behaviour with its own boundary tests and is left exactly as
+ * it is; this only overrides the paint, so "0:00" on a finished lot stops
+ * shouting in the time-pressure colour. */
+.instrument[data-settled="true"] [role="timer"] {
+  color: var(--ob-label-tertiary);
 }
 
 /* The settled result. Deliberately not role="status" or role="alert": the
@@ -202,6 +234,10 @@
  * using a stacked layout where text appears above secondary items."
  */
 @media (max-width: 34rem) {
+  .instrument {
+    gap: var(--ob-space-4);
+  }
+
   .instrument,
   .actions {
     padding: var(--ob-space-4);
@@ -217,6 +253,12 @@
     align-items: flex-start;
     padding-top: var(--ob-space-3);
     border-top: 1px solid var(--ob-hairline);
+  }
+
+  /* The clock-skew reading goes back onto its own line rather than being
+   * pushed to a trailing edge that no longer exists at this width. */
+  .clockStat {
+    margin-inline-start: 0;
   }
 
   .head {
@@ -253,6 +295,7 @@
   .chartCell {
     grid-area: chart;
     min-width: 0;
+    align-self: stretch;
   }
 
   .stats {

@@ -166,3 +166,54 @@ describe("createPriceChart appearance options", () => {
     expect(lastY).toBe(20);
   });
 });
+
+describe("createPriceChart price headroom", () => {
+  function coords(opts: Parameters<typeof createPriceChart>[1]) {
+    const canvas = fakeCanvas(); // 400x200
+    const chart = createPriceChart(canvas, opts);
+    chart.push({ tMs: 0, price: 100 });
+    chart.push({ tMs: 100, price: 200 });
+    chart.render();
+    const ctx = canvas.getContext("2d") as unknown as {
+      moveTo: { mock: { calls: Array<Array<number>> } };
+      lineTo: { mock: { calls: Array<Array<number>> } };
+    };
+    return { low: ctx.moveTo.mock.calls[0]![1]!, high: ctx.lineTo.mock.calls[0]![1]! };
+  }
+
+  // Without headroom the extremes land exactly on the insets, so the line
+  // always looks clipped to the plot's edges whatever the data is.
+  it("puts the extremes on the insets when there is no headroom", () => {
+    expect(coords({ padding: 10 })).toEqual({ low: 190, high: 10 });
+  });
+
+  it("pulls the extremes inward by the headroom fraction", () => {
+    // Span 100, headroom 0.25 -> domain [75, 225]; the usable range is 180px
+    // tall, so 100 sits 30px up from the bottom inset and 200 sits 30px down
+    // from the top.
+    const { low, high } = coords({ padding: 10, priceHeadroom: 0.25 });
+    expect(low).toBeCloseTo(160, 6);
+    expect(high).toBeCloseTo(40, 6);
+  });
+
+  // The degenerate case is what makes this worth a test rather than an
+  // inline expression: with every point at one price the span is zero, so a
+  // headroom computed off the raw span would be zero too and the widening
+  // fallback would be silently cancelled out, producing a NaN-free but
+  // meaningless domain.
+  it("still produces finite coordinates when every point shares one price", () => {
+    const canvas = fakeCanvas();
+    const chart = createPriceChart(canvas, { priceHeadroom: 0.2 });
+    chart.push({ tMs: 0, price: 150 });
+    chart.push({ tMs: 100, price: 150 });
+    chart.render();
+    const ctx = canvas.getContext("2d") as unknown as {
+      moveTo: { mock: { calls: Array<Array<number>> } };
+      lineTo: { mock: { calls: Array<Array<number>> } };
+    };
+    for (const [x, y] of [...ctx.moveTo.mock.calls, ...ctx.lineTo.mock.calls]) {
+      expect(Number.isFinite(x)).toBe(true);
+      expect(Number.isFinite(y)).toBe(true);
+    }
+  });
+});

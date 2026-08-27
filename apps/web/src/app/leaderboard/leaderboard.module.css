@@ -3,10 +3,14 @@
  * provide data ... consider offering the data in other ways, such as in a
  * list or table." Rank, name, wins is exactly that case. */
 
+/* Three short columns; a 1040px-wide row put a win count most of a screen
+ * away from the name it counted. */
 .page {
   display: flex;
   flex-direction: column;
   gap: var(--ob-space-5);
+  width: 100%;
+  max-width: 34rem;
 }
 
 .head {

@@ -1,4 +1,5 @@
 import { topBidders, type BidderRow } from "@/lib/leaderboard";
+import { cx } from "@/cx";
 import styles from "./leaderboard.module.css";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export default async function LeaderboardPage() {
           {bidders.map((b, index) => (
             <li
               key={b.nickname}
-              className={`${styles.row} ${index < 3 ? styles.rowLeading : ""}`}
+              className={cx(styles.row, index < 3 && styles.rowLeading)}
             >
               <span className={styles.rank} aria-hidden="true">
                 {index + 1}

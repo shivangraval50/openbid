@@ -14,6 +14,11 @@
   flex-direction: column;
   gap: var(--ob-space-2);
   min-width: 0;
+  /* Fills whatever height the instrument panel gives it, so the wide layout's
+   * two columns end level. With a fixed aspect ratio the chart column stopped
+   * well short of the readout column and left an obvious void inside the
+   * card -- the single biggest thing wrong with the first wide screenshot. */
+  height: 100%;
 }
 
 .caption {
@@ -56,23 +61,45 @@
 /* The plot. `aspect-ratio` plus a width-driven box means the reserved space is
  * known before any script runs, so the canvas cannot cause layout shift on
  * load -- and the canvas element itself keeps its intrinsic width/height
- * attributes for the same reason. The gradient reads as the plot floor and
- * gives the single line something to sit on without adding chart furniture. */
+ * attributes for the same reason.
+ *
+ * A FLAT surface, deliberately. An earlier pass filled this box with a
+ * vertical gradient standing in for an area fill; looking at it, the gradient
+ * was not anchored to the curve, so it implied a filled region above the line
+ * on the left-hand side -- ink that meant nothing. charting-data.md's "keep a
+ * chart simple" cuts the other way here: one line, one surface, no furniture
+ * that could be mistaken for data. */
 .plot {
   position: relative;
   width: 100%;
+  /* The aspect ratio is what reserves the box before any script runs (no
+   * layout shift on load); `flex: 1` lets it grow past that reservation to
+   * fill a taller column, which only ever makes the box bigger, never
+   * smaller, so nothing shifts on the way in. */
+  flex: 1 1 auto;
   aspect-ratio: 16 / 5;
   min-height: 5.5rem;
   border-radius: var(--ob-radius-md);
-  background:
-    linear-gradient(
-      to top,
-      var(--ob-chart-area-top),
-      var(--ob-chart-area-bottom) 72%
-    ),
-    var(--ob-surface-raised);
+  background: var(--ob-surface-raised);
   border: 1px solid var(--ob-hairline);
   overflow: hidden;
+}
+
+/* Shown until the price has actually moved. With a single sample there is no
+ * line to draw, and an empty bordered box reads as something that failed to
+ * load rather than as a chart awaiting its first tick -- loading.md: "If you
+ * make people wait ... they can interpret the lack of content as a problem
+ * with your app. Instead, consider showing placeholder text." */
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--ob-space-4);
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-footnote);
+  text-align: center;
 }
 
 .canvas {

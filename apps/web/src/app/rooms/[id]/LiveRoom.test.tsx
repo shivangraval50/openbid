@@ -72,6 +72,7 @@ describe("LiveRoom", () => {
         initialServerTime={1_000}
         initialState={seededState()}
         socketBaseUrl="http://localhost:8787"
+        itemName="liveroom-test"
       />
     );
 
@@ -93,6 +94,7 @@ describe("LiveRoom", () => {
           winner: { participantId: "me", amount: 250 },
         })}
         socketBaseUrl="http://localhost:8787"
+        itemName="liveroom-test"
       />
     );
 
@@ -122,6 +124,7 @@ describe("LiveRoom", () => {
         initialServerTime={0}
         initialState={seededState({ endsAtMs: 10_000 })}
         socketBaseUrl="http://localhost:8787"
+        itemName="liveroom-test"
       />
     );
 
@@ -172,6 +175,7 @@ describe("LiveRoom", () => {
             winner: { participantId: "me", amount: 250 },
           })}
           socketBaseUrl="http://localhost:8787"
+          itemName="liveroom-test"
         />
       );
 
@@ -225,6 +229,7 @@ describe("LiveRoom", () => {
             highBid: { participantId: "me", amount: 180, atMs: 900 },
           })}
           socketBaseUrl="http://localhost:8787"
+          itemName="liveroom-test"
         />
       );
 
@@ -254,6 +259,7 @@ describe("LiveRoom", () => {
             winner: { participantId: "me", amount: 250 },
           })}
           socketBaseUrl="http://localhost:8787"
+          itemName="liveroom-test"
         />
       );
 

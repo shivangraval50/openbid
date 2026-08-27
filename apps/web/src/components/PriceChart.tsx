@@ -32,6 +32,10 @@ export function PriceChart({ price, serverNow }: { price: number; serverNow: num
   // prop), so it cannot mismatch.
   const openingRef = useRef(price);
   const [renderNonce, setRenderNonce] = useState(0);
+  // How many samples the chart holds. Starts at 1 -- the point the mount
+  // effect pushes -- on both the server render and the client's hydrating
+  // render, so the placeholder below cannot mismatch.
+  const [sampleCount, setSampleCount] = useState(1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -63,6 +67,10 @@ export function PriceChart({ price, serverNow }: { price: number; serverNow: num
         stroke: readToken(canvas, "--ob-chart-line", "#64b0ff"),
         lineWidth: 2 * dpr,
         padding: 8 * dpr,
+        // Keeps the highest and lowest prices off the plot's own edges. Every
+        // series otherwise appears to run corner to corner whatever its
+        // shape, which reads as clipped rather than scaled.
+        priceHeadroom: 0.18,
       });
       // Carry the series across a rebuild; a window resize must not wipe the
       // price history the user has been watching.
@@ -113,21 +121,28 @@ export function PriceChart({ price, serverNow }: { price: number; serverNow: num
   useEffect(() => {
     chartRef.current?.push({ tMs: serverNowRef.current, price });
     chartRef.current?.render();
+    setSampleCount(chartRef.current?.points().length ?? 1);
   }, [price, renderNonce]);
 
   const opening = openingRef.current;
+  const hasMoved = sampleCount > 1 && opening !== price;
 
   return (
     <figure className={styles.chart}>
       <figcaption className={styles.caption}>
         <span className={styles.captionTitle}>Price over time</span>
-        <span className={styles.range}>
-          {opening}
-          <span className={styles.rangeArrow} aria-hidden="true">
-            →
+        {/* Only shown once there is a range to report. "100 → 100" on an
+            untouched lot is ink that says nothing, and the same number is
+            already set in display type immediately to the left. */}
+        {hasMoved ? (
+          <span className={styles.range}>
+            {opening}
+            <span className={styles.rangeArrow} aria-hidden="true">
+              →
+            </span>
+            <span className={styles.rangeNow}>{price}</span>
           </span>
-          <span className={styles.rangeNow}>{price}</span>
-        </span>
+        ) : null}
       </figcaption>
       <div className={styles.plot}>
         <canvas
@@ -140,8 +155,15 @@ export function PriceChart({ price, serverNow }: { price: number; serverNow: num
              labels that describe chart values and components". The static
              "Price over time" alone described the component but none of its
              values. */
-          aria-label={`Price over time. Opened at ${opening}, now ${price}.`}
+          aria-label={
+            hasMoved
+              ? `Price over time. Opened at ${opening}, now ${price}.`
+              : `Price over time. No change since this page opened; the price is ${price}.`
+          }
         />
+        {sampleCount > 1 ? null : (
+          <p className={styles.placeholder}>No change since you opened this page.</p>
+        )}
       </div>
     </figure>
   );

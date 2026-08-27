@@ -11,6 +11,7 @@ import {
 } from "@openbid/store";
 import { connectRoom, type ConnStatus, type RoomConnection } from "@/lib/socket";
 import { useAuctionSelector } from "@/hooks/useAuctionStore";
+import { cx } from "@/cx";
 import { BidForm } from "@/components/BidForm";
 import { useBidPhase } from "@/components/bidPhase";
 import { Commentary } from "@/components/Commentary";
@@ -228,6 +229,7 @@ export function LiveRoom(props: {
       <section
         className={styles.instrument}
         data-live={liveness(status)}
+        data-settled={closed ? "true" : "false"}
         aria-label="Auction instrument"
       >
         <div className={styles.readout}>
@@ -259,14 +261,17 @@ export function LiveRoom(props: {
             <span className={styles.statLabel}>Your budget</span>
             <span className={styles.statValue}>{budget === null ? "—" : budget}</span>
           </div>
-          <div className={styles.stat}>
-            <span className={styles.statLabel}>Clock</span>
+          <div className={cx(styles.stat, styles.clockStat)}>
             <Latency offsetMs={clockOffsetMs} />
           </div>
         </div>
       </section>
 
-      <section className={styles.actions} aria-label="Place a bid">
+      <section
+        className={styles.actions}
+        data-settled={closed ? "true" : "false"}
+        aria-label="Place a bid"
+      >
         <BidForm
           minimum={minimum}
           disabled={closed || status !== "open"}
@@ -284,9 +289,7 @@ export function LiveRoom(props: {
           // -indicator is rendered here for the same reason -- see the task
           // report for the open question on whether one belongs at all.
           <p
-            className={`${styles.outcome} ${
-              server.winner === null ? styles.outcomeEmpty : ""
-            }`}
+            className={cx(styles.outcome, server.winner === null && styles.outcomeEmpty)}
             data-testid="outcome"
           >
             {server.winner === null

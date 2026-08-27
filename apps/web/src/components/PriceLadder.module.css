@@ -44,7 +44,9 @@
   font-feature-settings: "tnum" 1;
   font-variant-ligatures: none;
   line-height: 1;
-  letter-spacing: -0.045em;
+  /* Mono faces already sit on a fixed advance grid; the -0.045em this started
+   * at was fighting that grid and made "100" look cramped rather than tight. */
+  letter-spacing: -0.02em;
   color: var(--ob-label);
   transition: color var(--ob-duration-base) var(--ob-ease);
 }

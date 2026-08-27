@@ -1,4 +1,5 @@
 import type { AuctionState } from "@openbid/auction-core";
+import { cx } from "@/cx";
 import type { BidPhase } from "./bidPhase";
 import styles from "./PriceLadder.module.css";
 
@@ -52,7 +53,7 @@ export function PriceLadder({
       </p>
       <div className={styles.rungs}>
         {minimum === undefined ? null : (
-          <p className={`${styles.rung} ${styles.rungNext}`}>
+          <p className={cx(styles.rung, styles.rungNext)}>
             <span className={styles.rungLabel}>Next bid at least</span>
             <span className={styles.rungValue}>{minimum}</span>
           </p>

@@ -3,10 +3,18 @@
  * to show when elements are related and to separate information into
  * distinct areas." */
 
+/* A narrower measure than the room gets. The shell's container is sized for
+ * the instrument panel, which genuinely wants width for its chart; a list of
+ * lot names does not, and at the full width the price and status columns
+ * ended up hundreds of pixels from the name they belong to -- layout.md's
+ * "Group related items ... to show when elements are related" read backwards.
+ */
 .page {
   display: flex;
   flex-direction: column;
   gap: var(--ob-space-7);
+  width: 100%;
+  max-width: 46rem;
 }
 
 .masthead {
@@ -188,17 +196,22 @@
   overflow-wrap: anywhere;
 }
 
+/* Fixed-width right columns, so the prices form a single column down the
+ * list instead of each row's cluster floating at its own width. layout.md:
+ * "Align components with one another to make them easier to scan and to
+ * communicate organization and hierarchy." */
 .lotMeta {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.25rem;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--ob-space-3);
+  justify-items: end;
+  gap: var(--ob-space-4);
 }
 
 .lotPrice {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.15em;
+  gap: 0.5em;
   color: var(--ob-label);
   font-family: var(--ob-font-numeric);
   font-size: var(--ob-type-subhead);
@@ -222,6 +235,8 @@
 .status {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 100%;
   gap: var(--ob-space-1);
   padding: 0.15rem var(--ob-space-2);
   border-radius: var(--ob-radius-pill);

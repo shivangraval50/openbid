@@ -1,11 +1,20 @@
+/* The badge sits BESIDE the time, on its baseline, not under it.
+ *
+ * Two earlier attempts, both visible in the screenshot passes and both wrong:
+ * a 4.25rem reserved block under the time (a conspicuous hole on every screen
+ * where no extension had happened, worst at 390px), then a 1.5rem reserved
+ * row (a smaller hole, still the largest gap in the panel). Putting the badge
+ * on the same line needs no reservation at all, and it also puts the
+ * annotation immediately next to the number it qualifies -- feedback.md,
+ * status feedback "available near the items it describes".
+ *
+ * `flex-wrap` so a long badge drops below the time on a narrow screen rather
+ * than squeezing the digits. */
 .clock {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--ob-space-1);
-  /* A fixed minimum so the extension badge appearing and disappearing cannot
-   * move the price beside it. */
-  min-height: 4.25rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ob-space-1) var(--ob-space-3);
 }
 
 .time {

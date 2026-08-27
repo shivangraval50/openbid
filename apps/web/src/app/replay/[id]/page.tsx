@@ -37,6 +37,15 @@ export default async function ReplayPage({ params }: { params: Promise<{ id: str
       <div className={styles.head}>
         {/* Heading copy unchanged, verbatim. */}
         <h1 className={styles.title}>Replay — {archived.itemName}</h1>
+        {/* The archive already carries the outcome and the page was throwing
+            it away, which left this route reading as an unfinished stub next
+            to the live room. Stated once, at the top, so the scrub below is
+            read as an exploration of a known result rather than as a quiz. */}
+        <p className={styles.subtitle}>
+          {archived.winnerNickname === null || archived.winningPrice === null
+            ? "Closed with no bids."
+            : `Won by ${archived.winnerNickname} at ${archived.winningPrice}.`}
+        </p>
       </div>
       <Scrubber config={config} events={archived.bidLog} />
     </main>

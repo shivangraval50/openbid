@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createRoom } from "@/actions/rooms";
 import { listRooms } from "@/lib/rooms";
+import { cx } from "@/cx";
 import styles from "./page.module.css";
 
 export const dynamic = "force-dynamic";
@@ -66,9 +67,10 @@ export default async function LobbyPage() {
                       </span>
                     )}
                     <span
-                      className={`${styles.status} ${
+                      className={cx(
+                        styles.status,
                         room.status === "open" ? styles.statusOpen : styles.statusClosed
-                      }`}
+                      )}
                     >
                       <span className={styles.statusDot} aria-hidden="true" />
                       {room.status}
