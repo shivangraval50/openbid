@@ -1,0 +1,63 @@
+name: deploy-worker
+
+# Deliberately NOT armed on `push` out of the box.
+#
+# This repo has never been deployed and no CLOUDFLARE_API_TOKEN secret exists.
+# An unguarded `on: push` trigger here would go red the first time
+# `packages/room-do/**` lands on main -- which is exactly the merge that
+# integrates this branch -- for a missing credential rather than a real
+# problem. The `secrets` context is not available in a job-level `if:`, so the
+# guard has to be a step (see below).
+#
+# To arm it: add the secret (see DEPLOY.md step 9) and uncomment the `push`
+# block. The workflow is safe to leave armed *without* the secret too -- it
+# exits cleanly rather than failing -- but leaving it on workflow_dispatch
+# until you actually want automatic deploys is the quieter default.
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths: ["packages/room-do/**"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The credential check is a step, not a job-level `if:`, because GitHub
+      # does not expose the `secrets` context to `jobs.<id>.if`. Read via `env`
+      # rather than interpolated into the script body, so the value is never
+      # substituted into a shell command line.
+      - name: Check for a Cloudflare credential
+        id: creds
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CLOUDFLARE_API_TOKEN is not set; skipping deploy. See DEPLOY.md step 9."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Guard against a half-configured first deploy: Durable Object
+      # migrations are append-only once applied, so the first one must carry
+      # every class. See DEPLOY.md step 4.
+      - name: Assert the migration list is intact
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          test "$(grep -c '^\[\[migrations\]\]' packages/room-do/wrangler.toml)" = "1"
+          grep -q 'new_sqlite_classes = \["RoomDO", "LobbyDO"\]' packages/room-do/wrangler.toml
+
+      - name: Deploy
+        if: steps.creds.outputs.configured == 'true'
+        run: npx wrangler deploy
+        working-directory: packages/room-do
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
