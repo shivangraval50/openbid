@@ -2,6 +2,13 @@ import { z } from "zod";
 
 export const PROTOCOL_VERSION = 1;
 
+// Shared with apps/web's identity.ts, which truncates a signed-in user's
+// display name (or a generated guest nickname) to this same limit before
+// ever sending a "hello" -- imported from here rather than duplicated as
+// a bare literal, so the client-side truncation and this wire-level cap
+// cannot silently drift apart.
+export const NICKNAME_MAX_LENGTH = 32;
+
 export const rejectReasonSchema = z.enum([
   "TOO_LOW",
   "AUCTION_CLOSED",
@@ -52,7 +59,7 @@ export const lobbyPriceSchema = z.object({
 export type LobbyPrice = z.infer<typeof lobbyPriceSchema>;
 
 export const clientMessageSchema = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("hello"), lastSeenSeq: seq, nickname: z.string().min(1).max(32) }),
+  z.object({ t: z.literal("hello"), lastSeenSeq: seq, nickname: z.string().min(1).max(NICKNAME_MAX_LENGTH) }),
   z.object({ t: z.literal("bid"), clientSeq: seq, amount: money }),
   z.object({ t: z.literal("ping"), clientTime: z.number().finite() }),
 ]);

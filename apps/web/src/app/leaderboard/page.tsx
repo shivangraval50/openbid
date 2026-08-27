@@ -1,9 +1,26 @@
-import { topBidders } from "@/lib/leaderboard";
+import { topBidders, type BidderRow } from "@/lib/leaderboard";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Defense in depth: `topBidders()` already guarantees it never rejects
+ * (see leaderboard.ts's own try/catch around the Neon client and
+ * query), but Requirement 4 -- "the leaderboard must never break the
+ * page" -- is a promise about THIS PAGE, not merely about trusting
+ * that guarantee to hold forever. A future edit to `topBidders` that
+ * dropped its own try/catch would otherwise turn straight into an
+ * error page here with nothing to catch it.
+ */
+async function fetchBiddersSafely(): Promise<BidderRow[]> {
+  try {
+    return await topBidders();
+  } catch {
+    return [];
+  }
+}
+
 export default async function LeaderboardPage() {
-  const bidders = await topBidders();
+  const bidders = await fetchBiddersSafely();
 
   return (
     <main>

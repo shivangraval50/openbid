@@ -118,6 +118,25 @@ describe("resolveIdentity", () => {
     expect(identity.nickname.length).toBe(32);
   });
 
+  // A naive `name.slice(0, 32)` truncates by UTF-16 code unit, so an
+  // emoji (a surrogate pair, 2 code units) straddling the boundary gets
+  // cut in half -- a lone surrogate that still satisfies the protocol's
+  // `.max(32)` check (it still counts as one `.length` unit) but is not
+  // valid Unicode. This name is built so the 32-code-unit mark lands
+  // exactly inside the emoji: 31 "a"s (31 units) then one emoji (2
+  // units) would only partially fit. The fix must drop the emoji
+  // whole, landing at 31 characters, rather than emit a corrupted
+  // 32-unit string.
+  it("truncates by whole character instead of splitting a surrogate pair", async () => {
+    const name = "a".repeat(31) + "\u{1F600}" + "trailing text";
+    auth.mockResolvedValue({ user: { name } });
+
+    const identity = await resolveIdentity();
+
+    expect(identity.nickname).toBe("a".repeat(31));
+    expect(identity.nickname.length).toBeLessThanOrEqual(32);
+  });
+
   it("treats an empty session name as signed-out and falls back to the guest cookie", async () => {
     auth.mockResolvedValue({ user: { name: "" } });
     cookieStore.get.mockReturnValue({ value: "quiet-vole-a1b" });
