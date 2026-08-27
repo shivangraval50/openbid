@@ -185,7 +185,12 @@ bookkeeping.
   nickname cookie on first request. GitHub sign-in (Auth.js, JWT sessions, no
   database adapter) only adds a persistent leaderboard identity. Signed-in names
   use GitHub's unique `login`, not the free-text display name, so two people
-  called "Alex" don't merge on the leaderboard.
+  called "Alex" don't merge on the leaderboard. And guests are not ranked at
+  all: the `persistent` flag travels with the identity all the way to
+  `completed_auctions.winner_persistent`, and the leaderboard query filters on
+  it. Without that column, `GROUP BY winner_nickname` would merge a guest's
+  wins into any row sharing their nickname — and `openbid_guest` is
+  client-writable, so that nickname can be any GitHub login they like.
 - **Leaderboard** ranks by wins, tie-broken by lowest total overpay above the
   starting price. That is deliberately *not* the spec's original "budget
   surplus": the archive stores starting and winning price, not each room's
@@ -306,6 +311,16 @@ Real ones, not modesty:
   were taken and reviewed by hand. Nothing in CI compares against them, and the
   Playwright specs assert on text and counts, never on pixels, so a visual
   regression would ship green.
+- **The signed-in flag is asserted by the client, not proved.** The WebSocket
+  connects browser → Worker directly, so the Durable Object has no Auth.js
+  session to check: the `hello` carries a `persistent` boolean and the DO
+  records what it is told. That is enough to keep ordinary guests off the
+  leaderboard, which is what the ranking is supposed to mean, and the flag is no
+  more forgeable than the `nickname` sitting next to it — but a hand-crafted
+  `hello` can still claim to be a signed-in identity. Closing that properly
+  needs the web app to mint a short-lived signed handshake token that the Worker
+  verifies against a shared secret; that is a new deploy credential and a new
+  failure mode, and it is not here.
 - **Prediction-market mode is deliberately out of scope.** The original idea
   offered "auction *or* prediction market". A probability series is a different
   state machine and would have diluted both, so this is auction-only by decision,

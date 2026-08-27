@@ -46,7 +46,7 @@ async function connect(id: string, nickname: string, lastSeenSeq = 0) {
   ws.addEventListener("message", (e) => {
     inbox.push(parseServerMessage(String(e.data)));
   });
-  ws.send(encode({ t: "hello", lastSeenSeq, nickname }));
+  ws.send(encode({ t: "hello", lastSeenSeq, nickname, persistent: false }));
   return { ws, inbox };
 }
 

@@ -18,8 +18,31 @@ describe("parseClientMessage", () => {
   });
 
   it("accepts a hello", () => {
+    const msg = parseClientMessage(
+      JSON.stringify({ t: "hello", lastSeenSeq: 0, nickname: "ada", persistent: true })
+    );
+    expect(msg).toEqual({ t: "hello", lastSeenSeq: 0, nickname: "ada", persistent: true });
+  });
+
+  // `persistent` is `.default(false)` rather than required specifically so
+  // that a client build predating the field still connects: rejecting the
+  // hello would close the socket with 1003 and send that client into an
+  // endless reconnect loop, and the Worker and the web app deploy
+  // independently of each other. The default has to be `false` -- treating
+  // an unstated claim as signed-in would let any old client's wins onto the
+  // leaderboard. A required `z.boolean()` fails this test; a
+  // `.default(true)` fails the assertion below it.
+  it("defaults a hello's persistent flag to false when the field is absent", () => {
     const msg = parseClientMessage(JSON.stringify({ t: "hello", lastSeenSeq: 0, nickname: "ada" }));
-    expect(msg.t).toBe("hello");
+    expect(msg).toEqual({ t: "hello", lastSeenSeq: 0, nickname: "ada", persistent: false });
+  });
+
+  it("rejects a hello whose persistent flag is not a boolean", () => {
+    expect(() =>
+      parseClientMessage(
+        JSON.stringify({ t: "hello", lastSeenSeq: 0, nickname: "ada", persistent: "yes" })
+      )
+    ).toThrow(ZodError);
   });
 
   it("rejects an unknown message type", () => {
@@ -138,8 +161,38 @@ describe("encode", () => {
 
 describe("auctionEventSchema", () => {
   it("accepts a well-formed joined event", () => {
-    const event = { type: "joined", participantId: "ada", nickname: "ada", atMs: 0 };
+    const event = {
+      type: "joined",
+      participantId: "ada",
+      nickname: "ada",
+      persistent: true,
+      atMs: 0,
+    };
     expect(auctionEventSchema.parse(event)).toEqual(event);
+  });
+
+  // Same reasoning as the `hello` default above, applied to a stored bid
+  // log: a Durable Object's own SQLite event log survives Worker code
+  // deploys, and a Neon `bid_log` survives indefinitely, so a `joined`
+  // event written before this field existed must still replay -- as a
+  // guest, which can only ever drop a win from the leaderboard, never
+  // invent one. A required `z.boolean()` here would fail the whole row,
+  // and `fetchArchivedAuction`'s catch turns that into a silent 404 for
+  // the entire replay page.
+  it("defaults a joined event's persistent flag to false when the field is absent", () => {
+    const event = { type: "joined", participantId: "ada", nickname: "ada", atMs: 0 };
+    expect(auctionEventSchema.parse(event)).toEqual({ ...event, persistent: false });
+  });
+
+  it("rejects a joined event whose persistent flag is not a boolean", () => {
+    const event = {
+      type: "joined",
+      participantId: "ada",
+      nickname: "ada",
+      persistent: 1,
+      atMs: 0,
+    };
+    expect(() => auctionEventSchema.parse(event)).toThrow(ZodError);
   });
 
   it("accepts a well-formed bidPlaced event", () => {
@@ -201,7 +254,7 @@ describe("archivedAuctionSchema", () => {
     winningPrice: 400,
     winnerNickname: "ada",
     bidLog: [
-      { type: "joined", participantId: "ada", nickname: "ada", atMs: 0 },
+      { type: "joined", participantId: "ada", nickname: "ada", persistent: false, atMs: 0 },
       { type: "bidPlaced", participantId: "ada", amount: 100, atMs: 10, newEndsAtMs: 20_000 },
       { type: "closed", atMs: 30, winner: { participantId: "ada", amount: 100 } },
     ],

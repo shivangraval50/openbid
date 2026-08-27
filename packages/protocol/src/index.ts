@@ -88,6 +88,16 @@ export const auctionEventSchema = z.discriminatedUnion("type", [
     type: z.literal("joined"),
     participantId: z.string().min(1),
     nickname: z.string().min(1),
+    // `.default(false)` rather than required, in the one direction that is
+    // safe to guess: an event with no flag is treated as a guest, which
+    // only ever removes a win from the leaderboard, never adds one. That
+    // keeps a bid log written before this field existed (a Durable
+    // Object's own SQLite event log survives Worker code deploys, and a
+    // Neon `bid_log` survives forever) replayable instead of failing the
+    // whole row and 404ing the replay page. The inferred type is still a
+    // required `boolean`, so every producer in this repo is compiler
+    // -forced to set it.
+    persistent: z.boolean().default(false),
     atMs: z.number().finite(),
   }),
   z.object({
@@ -134,7 +144,27 @@ export const archivedAuctionSchema = z.object({
 export type ArchivedAuction = z.infer<typeof archivedAuctionSchema>;
 
 export const clientMessageSchema = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("hello"), lastSeenSeq: seq, nickname: z.string().min(1).max(NICKNAME_MAX_LENGTH) }),
+  z.object({
+    t: z.literal("hello"),
+    lastSeenSeq: seq,
+    nickname: z.string().min(1).max(NICKNAME_MAX_LENGTH),
+    // Whether `nickname` is a signed-in GitHub `login` or a guest cookie
+    // value. `.default(false)` so a client that predates this field still
+    // connects: the alternative -- rejecting the `hello` -- would close
+    // the socket with 1003 and send that client into the same infinite
+    // reconnect loop as an over-long nickname, which is a real hazard
+    // here because the Worker and the web app deploy independently of
+    // each other.
+    //
+    // This is ASSERTED by the client, and the Durable Object has no way
+    // to verify it: the WebSocket goes browser -> Worker directly (see
+    // NEXT_PUBLIC_ROOMS_BASE_URL in DEPLOY.md), so there is no Auth.js
+    // session on this side of the connection. It removes guests from the
+    // leaderboard by default; it is not a security boundary, and it is
+    // no more forgeable than `nickname` itself already is. See the
+    // README's Limitations section.
+    persistent: z.boolean().default(false),
+  }),
   z.object({ t: z.literal("bid"), clientSeq: seq, amount: money }),
   z.object({ t: z.literal("ping"), clientTime: z.number().finite() }),
 ]);

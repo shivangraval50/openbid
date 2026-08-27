@@ -12,8 +12,8 @@ const config: AuctionConfig = {
   endsAtMs: 1_000_000,
 };
 
-function joined(id: string, nickname = id) {
-  return { type: "joined", participantId: id, nickname, atMs: 0 } as const;
+function joined(id: string, nickname = id, persistent = false) {
+  return { type: "joined", participantId: id, nickname, persistent, atMs: 0 } as const;
 }
 
 function withParticipants(...ids: string[]) {

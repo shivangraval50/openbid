@@ -29,7 +29,18 @@ export function rankBidders(rows: BidderRow[]): BidderRow[] {
 }
 
 /**
- * Reads the leaderboard from Neon. `DATABASE_URL` is deliberately unset
+ * Reads the leaderboard from Neon.
+ *
+ * `WHERE ... AND winner_persistent` is what makes this the *signed-in*
+ * ranking the spec describes. Without it, the `GROUP BY winner_nickname`
+ * merges guest wins into whatever row shares their nickname -- and since
+ * `openbid_guest` is set `httpOnly: false` (`proxy.ts`), a guest can
+ * simply set it to a real GitHub login and deposit their wins in that
+ * user's row. `auth.ts`'s login-over-display-name work closed the
+ * collision between two signed-in "Alex"es; this closes the one between
+ * a guest and anybody.
+ *
+ * `DATABASE_URL` is deliberately unset
  * in tests, and may be unset in a deployment; the leaderboard is a
  * read-only nicety, so ANY failure here -- missing config, a thrown
  * client construction, a rejected query -- degrades to an empty list
@@ -47,6 +58,7 @@ export async function topBidders(limit = 20): Promise<BidderRow[]> {
              COALESCE(SUM(winning_price - starting_price), 0)::float  AS overpay
       FROM completed_auctions
       WHERE winner_nickname IS NOT NULL
+        AND winner_persistent
       GROUP BY winner_nickname
       ORDER BY wins DESC
       LIMIT ${limit}

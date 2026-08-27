@@ -28,7 +28,7 @@ const archived = {
   winningPrice: 400,
   winnerNickname: "ada",
   bidLog: [
-    { type: "joined", participantId: "ada", nickname: "ada", atMs: 0 },
+    { type: "joined", participantId: "ada", nickname: "ada", persistent: false, atMs: 0 },
     { type: "bidPlaced", participantId: "ada", amount: 400, atMs: 10, newEndsAtMs: 20_000 },
     { type: "closed", atMs: 30, winner: { participantId: "ada", amount: 400 } },
   ],

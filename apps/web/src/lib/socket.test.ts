@@ -92,7 +92,7 @@ const config: AuctionConfig = {
 function seededState(): AuctionState {
   return {
     ...initialState(config),
-    participants: { me: { id: "me", nickname: "me", budget: 500 } },
+    participants: { me: { id: "me", nickname: "me", budget: 500, persistent: false } },
   };
 }
 
@@ -114,13 +114,50 @@ describe("connectRoom", () => {
   it("sends hello with the store's current lastSeenSeq on open", () => {
     const store = createAuctionStore();
     store.getState().seedFromSnapshot(7, 1_000, seededState());
-    connectRoom({ url: "ws://room", nickname: "alice", store, onStatus: vi.fn() });
+    connectRoom({ url: "ws://room", nickname: "alice", persistent: false, store, onStatus: vi.fn() });
 
     const ws = FakeWebSocket.instances[0]!;
     ws.triggerOpen();
 
     const hello = ws.sentMessages().find((m) => m.t === "hello");
     expect(hello).toMatchObject({ t: "hello", lastSeenSeq: 7, nickname: "alice" });
+  });
+
+  // The second link in the chain that ends at
+  // `completed_auctions.winner_persistent`: RoomDO copies this straight
+  // onto the room's `joined` event, so a hello that hardcoded `false` (or
+  // omitted the field and let the schema default fill it in) would archive
+  // every signed-in win as a guest's and quietly keep it off the
+  // leaderboard.
+  it("puts the caller's persistent flag on the hello", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(1, 1_000, seededState());
+    connectRoom({ url: "ws://room", nickname: "octocat", persistent: true, store, onStatus: vi.fn() });
+
+    const ws = FakeWebSocket.instances[0]!;
+    ws.triggerOpen();
+
+    expect(ws.sentMessages().find((m) => m.t === "hello")).toMatchObject({
+      nickname: "octocat",
+      persistent: true,
+    });
+  });
+
+  it("sends persistent: false for a guest", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(1, 1_000, seededState());
+    connectRoom({
+      url: "ws://room",
+      nickname: "brisk-otter-7f3",
+      persistent: false,
+      store,
+      onStatus: vi.fn(),
+    });
+
+    const ws = FakeWebSocket.instances[0]!;
+    ws.triggerOpen();
+
+    expect(ws.sentMessages().find((m) => m.t === "hello")).toMatchObject({ persistent: false });
   });
 
   // This is Requirement 3's actual test: reading `lastSeenSeq` once at
@@ -133,7 +170,7 @@ describe("connectRoom", () => {
   it("re-reads lastSeenSeq at each reconnect, not a value captured once at connect time", () => {
     const store = createAuctionStore();
     store.getState().seedFromSnapshot(1, 1_000, seededState());
-    connectRoom({ url: "ws://room", nickname: "bob", store, onStatus: vi.fn() });
+    connectRoom({ url: "ws://room", nickname: "bob", persistent: false, store, onStatus: vi.fn() });
 
     const first = FakeWebSocket.instances[0]!;
     first.triggerOpen();
@@ -174,7 +211,7 @@ describe("connectRoom", () => {
     const observeClockSpy = vi.spyOn(store.getState(), "observeClock");
     const applySpy = vi.spyOn(store.getState(), "applyServerMessage");
 
-    connectRoom({ url: "ws://room", nickname: "carol", store, onStatus: vi.fn() });
+    connectRoom({ url: "ws://room", nickname: "carol", persistent: false, store, onStatus: vi.fn() });
     const ws = FakeWebSocket.instances[0]!;
     ws.triggerOpen();
     observeClockSpy.mockClear();
@@ -210,7 +247,7 @@ describe("connectRoom", () => {
     const onStatus = vi.fn();
     const store = createAuctionStore();
     store.getState().seedFromSnapshot(1, 1_000, seededState());
-    const conn = connectRoom({ url: "ws://room", nickname: "dan", store, onStatus });
+    const conn = connectRoom({ url: "ws://room", nickname: "dan", persistent: false, store, onStatus });
 
     const ws = FakeWebSocket.instances[0]!;
     ws.triggerOpen();
@@ -230,7 +267,7 @@ describe("connectRoom", () => {
   it("increases the reconnect delay across consecutive failures, per backoffMs", () => {
     const store = createAuctionStore();
     store.getState().seedFromSnapshot(1, 1_000, seededState());
-    connectRoom({ url: "ws://room", nickname: "erin", store, onStatus: vi.fn() });
+    connectRoom({ url: "ws://room", nickname: "erin", persistent: false, store, onStatus: vi.fn() });
 
     const first = FakeWebSocket.instances[0]!;
     first.triggerClose(); // never opened; still schedules a reconnect at backoffMs(0)
@@ -254,7 +291,7 @@ describe("connectRoom", () => {
   it("sends a ping immediately on open, not only on the 5s interval", () => {
     const store = createAuctionStore();
     store.getState().seedFromSnapshot(1, 1_000, seededState());
-    connectRoom({ url: "ws://room", nickname: "fay", store, onStatus: vi.fn() });
+    connectRoom({ url: "ws://room", nickname: "fay", persistent: false, store, onStatus: vi.fn() });
 
     const ws = FakeWebSocket.instances[0]!;
     ws.triggerOpen();

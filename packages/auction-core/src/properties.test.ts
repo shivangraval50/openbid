@@ -20,7 +20,8 @@ const bidderIds = ["ada", "grace", "alan"] as const;
 
 function seeded(): AuctionState {
   return bidderIds.reduce(
-    (s, id) => reduce(s, { type: "joined", participantId: id, nickname: id, atMs: 0 }),
+    (s, id) =>
+      reduce(s, { type: "joined", participantId: id, nickname: id, persistent: false, atMs: 0 }),
     initialState(config)
   );
 }

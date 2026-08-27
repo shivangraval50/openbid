@@ -14,8 +14,8 @@ const config: AuctionConfig = {
 };
 
 const events: AuctionEvent[] = [
-  { type: "joined", participantId: "ada", nickname: "ada", atMs: 0 },
-  { type: "joined", participantId: "grace", nickname: "grace", atMs: 0 },
+  { type: "joined", participantId: "ada", nickname: "ada", persistent: false, atMs: 0 },
+  { type: "joined", participantId: "grace", nickname: "grace", persistent: false, atMs: 0 },
   { type: "bidPlaced", participantId: "ada", amount: 100, atMs: 10, newEndsAtMs: 20_000 },
   { type: "bidPlaced", participantId: "grace", amount: 150, atMs: 20, newEndsAtMs: 30_000 },
   { type: "closed", atMs: 40, winner: { participantId: "grace", amount: 150 } },

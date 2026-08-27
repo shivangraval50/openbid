@@ -15,6 +15,14 @@ export interface RoomConnection {
 export function connectRoom(opts: {
   url: string;
   nickname: string;
+  /**
+   * Whether `nickname` is a signed-in GitHub `login` rather than a guest
+   * cookie value -- `resolveIdentity()`'s own flag, forwarded down. Required,
+   * not optional-with-a-default: an omitted flag would silently rank a
+   * signed-in user's wins as a guest's, which is exactly the kind of quiet
+   * drop an optional parameter invites.
+   */
+  persistent: boolean;
   store: AuctionStore;
   onStatus(status: ConnStatus): void;
 }): RoomConnection {
@@ -41,6 +49,7 @@ export function connectRoom(opts: {
           t: "hello",
           lastSeenSeq: opts.store.getState().lastSeenSeq,
           nickname: opts.nickname,
+          persistent: opts.persistent,
         })
       );
       // Ping immediately, rather than waiting for the first 5s interval

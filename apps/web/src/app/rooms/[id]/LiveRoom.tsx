@@ -50,6 +50,14 @@ export function LiveRoom(props: {
   socketBaseUrl: string;
   nickname?: string;
   /**
+   * Whether `nickname` came from a GitHub session rather than the guest
+   * cookie (`resolveIdentity().persistent`). Optional, matching `nickname`
+   * above, and defaulted to `false` -- the only safe guess, since it is
+   * what keeps an unattributable win off the leaderboard rather than
+   * crediting it to whoever shares that nickname.
+   */
+  persistent?: boolean;
+  /**
    * The lot's name, passed down rather than read off the seeded store so
    * that the heading renders even on the (practically unreachable) branch
    * where `server` is still null.
@@ -101,12 +109,13 @@ export function LiveRoom(props: {
     const conn = connectRoom({
       url,
       nickname: props.nickname ?? "guest",
+      persistent: props.persistent ?? false,
       store,
       onStatus: setStatus,
     });
     connRef.current = conn;
     return () => conn.close();
-  }, [props.roomId, props.socketBaseUrl, props.nickname, store]);
+  }, [props.roomId, props.socketBaseUrl, props.nickname, props.persistent, store]);
 
   // Re-render the countdown on a timer; the clock value itself comes from
   // the store's server-corrected offset, never from a local timestamp.

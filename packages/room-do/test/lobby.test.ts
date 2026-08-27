@@ -128,7 +128,7 @@ async function initRoom(id: string, config: AuctionConfig): Promise<void> {
   expect(res.status).toBe(201);
 }
 
-async function openSocket(id: string, nickname: string) {
+async function openSocket(id: string, nickname: string, persistent = false) {
   const res = await SELF.fetch(`https://x/rooms/${id}/ws`, {
     headers: { Upgrade: "websocket" },
   });
@@ -142,7 +142,7 @@ async function openSocket(id: string, nickname: string) {
     inbox.push(parseServerMessage(String(event.data)));
   });
 
-  ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname }));
+  ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname, persistent }));
   return { ws, inbox };
 }
 

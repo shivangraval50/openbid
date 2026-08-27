@@ -128,6 +128,25 @@ describe("topBidders", () => {
     expect(result.map((r) => r.nickname)).toEqual(["grace", "ada"]);
   });
 
+  // The last link in the chain, and the one the whole schema change exists
+  // for. `GROUP BY winner_nickname` over an unfiltered table merges guest
+  // wins into whatever row shares that nickname -- and `openbid_guest` is
+  // set `httpOnly: false` (proxy.ts), so a guest can set it to any real
+  // GitHub login and deposit their wins in that user's row. The spec ranks
+  // SIGNED-IN participants. Asserting on the SQL text is the only reachable
+  // assertion here (the driver is mocked, there is no database in tests),
+  // but it fails loudly the moment the predicate is dropped or renamed.
+  it("restricts the ranking to persistent, signed-in winners", async () => {
+    process.env.DATABASE_URL = "postgres://example/db";
+    sql.mockResolvedValue([]);
+
+    await topBidders();
+
+    const strings = (sql.mock.calls[0]?.[0] as string[] | undefined)?.join("") ?? "";
+    expect(strings).toContain("winner_nickname IS NOT NULL");
+    expect(strings).toContain("winner_persistent");
+  });
+
   it("passes the limit through to the query", async () => {
     process.env.DATABASE_URL = "postgres://example/db";
     sql.mockResolvedValue([]);

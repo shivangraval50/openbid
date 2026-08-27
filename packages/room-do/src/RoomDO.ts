@@ -28,6 +28,9 @@ import { archiveSettlement, type SettlementRecord } from "./archive.js";
 interface Attachment {
   participantId: string;
   nickname: string;
+  /** See the `hello` schema in `@openbid/protocol`: client-asserted, and
+   *  unverifiable from here (this Worker has no Auth.js session). */
+  persistent: boolean;
   bucket: Bucket;
 }
 
@@ -270,6 +273,7 @@ export class RoomDO extends DurableObject {
         ws.serializeAttachment({
           participantId,
           nickname: msg.nickname,
+          persistent: msg.persistent,
           bucket: newBucket(Date.now()),
         } satisfies Attachment);
 
@@ -296,6 +300,12 @@ export class RoomDO extends DurableObject {
           type: "joined" as const,
           participantId,
           nickname: msg.nickname,
+          // Recorded on the EVENT, not just on the socket attachment: the
+          // settlement below runs from `alarm()`, which has no socket to
+          // read, and `state()` rebuilds `participants` from this log
+          // after an eviction. The attachment is a per-connection cache;
+          // the log is the record.
+          persistent: msg.persistent,
           atMs,
         };
         const joinSeq = appendEvent(this.ctx.storage.sql, joinEvent);
@@ -401,12 +411,17 @@ export class RoomDO extends DurableObject {
           await this.notifyLobby();
 
           const winnerId = this.cached.winner?.participantId ?? null;
+          const winner = winnerId === null ? undefined : this.cached.participants[winnerId];
           const record: SettlementRecord = {
             roomId: getMeta(this.ctx.storage.sql, "roomId") ?? this.ctx.id.toString(),
             itemName: state.config.itemName,
             startingPrice: state.config.startingPrice,
-            winnerNickname:
-              winnerId === null ? null : this.cached.participants[winnerId]?.nickname ?? null,
+            winnerNickname: winner?.nickname ?? null,
+            // `?? false` for the same reason `winnerNickname` gets `?? null`:
+            // an unsold auction has no winner to look up. Defaulting to
+            // "guest" is also the direction that can only ever drop a win
+            // from the leaderboard, never invent one.
+            winnerPersistent: winner?.persistent ?? false,
             winningPrice: this.cached.winner?.amount ?? null,
             closedAtMs: Date.now(),
             bidLog: readEventsSince(this.ctx.storage.sql, 0).map((row) => row.event),

@@ -18,9 +18,36 @@ describe("reduce", () => {
       type: "joined",
       participantId: "ada",
       nickname: "ada",
+      persistent: false,
       atMs: 0,
     });
-    expect(state.participants["ada"]).toEqual({ id: "ada", nickname: "ada", budget: 500 });
+    expect(state.participants["ada"]).toEqual({
+      id: "ada",
+      nickname: "ada",
+      budget: 500,
+      persistent: false,
+    });
+  });
+
+  // The apply half of the flag's path: `alarm()` resolves the winner's
+  // `persistent` off `state.participants`, not off a live socket (there may
+  // be none left by then, and `RoomDO.state()` rebuilds this map from the
+  // event log after an eviction). A `reduce` that dropped the field would
+  // make every archived win a guest's.
+  it("carries the joined event's persistent flag onto the participant", () => {
+    const state = reduce(initialState(config), {
+      type: "joined",
+      participantId: "octocat",
+      nickname: "octocat",
+      persistent: true,
+      atMs: 0,
+    });
+    expect(state.participants["octocat"]).toEqual({
+      id: "octocat",
+      nickname: "octocat",
+      budget: 500,
+      persistent: true,
+    });
   });
 
   it("is idempotent for a repeated joined event", () => {
@@ -28,6 +55,7 @@ describe("reduce", () => {
       type: "joined",
       participantId: "ada",
       nickname: "ada",
+      persistent: false,
       atMs: 0,
     } as const;
     const once = reduce(initialState(config), join);
@@ -40,6 +68,7 @@ describe("reduce", () => {
       type: "joined",
       participantId: "ada",
       nickname: "ada",
+      persistent: false,
       atMs: 0,
     });
     state = reduce(state, {
@@ -56,7 +85,13 @@ describe("reduce", () => {
   it("does not mutate the input state", () => {
     const before = initialState(config);
     const frozen = JSON.stringify(before);
-    reduce(before, { type: "joined", participantId: "ada", nickname: "ada", atMs: 0 });
+    reduce(before, {
+      type: "joined",
+      participantId: "ada",
+      nickname: "ada",
+      persistent: false,
+      atMs: 0,
+    });
     expect(JSON.stringify(before)).toBe(frozen);
   });
 
@@ -65,6 +100,7 @@ describe("reduce", () => {
       type: "joined",
       participantId: "ada",
       nickname: "ada",
+      persistent: false,
       atMs: 0,
     });
     state = reduce(state, {

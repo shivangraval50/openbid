@@ -34,6 +34,12 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
         initialState={snapshot.state}
         socketBaseUrl={process.env.NEXT_PUBLIC_ROOMS_BASE_URL ?? ""}
         nickname={identity.nickname}
+        // Forwarded all the way to the `hello`, and from there onto the
+        // room's `joined` event, the winner's Participant record and
+        // finally `completed_auctions.winner_persistent` -- which is what
+        // the leaderboard filters on. Dropping it here would silently
+        // demote every signed-in win to a guest's.
+        persistent={identity.persistent}
       />
     </main>
   );

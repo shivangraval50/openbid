@@ -23,6 +23,7 @@ export function reduce(state: AuctionState, event: AuctionEvent): AuctionState {
             id: event.participantId,
             nickname: event.nickname,
             budget: state.config.startingBudget,
+            persistent: event.persistent,
           },
         },
       };

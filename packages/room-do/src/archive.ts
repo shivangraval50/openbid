@@ -5,6 +5,14 @@ export interface SettlementRecord {
   itemName: string;
   startingPrice: number;
   winnerNickname: string | null;
+  /**
+   * Whether `winnerNickname` is a persistent, GitHub-backed identity
+   * rather than a guest cookie value. The leaderboard ranks only
+   * persistent winners, so this has to be stored alongside the nickname:
+   * a bare nickname is indistinguishable after the fact, and a guest can
+   * set their cookie to any GitHub login.
+   */
+  winnerPersistent: boolean;
   winningPrice: number | null;
   closedAtMs: number;
   bidLog: unknown[];
@@ -41,10 +49,11 @@ export async function archiveSettlement(
 
   await sql`
     INSERT INTO completed_auctions
-      (room_id, item_name, starting_price, winner_nickname, winning_price, closed_at, bid_log)
+      (room_id, item_name, starting_price, winner_nickname, winner_persistent,
+       winning_price, closed_at, bid_log)
     VALUES
       (${record.roomId}, ${record.itemName}, ${record.startingPrice},
-       ${record.winnerNickname}, ${record.winningPrice},
+       ${record.winnerNickname}, ${record.winnerPersistent}, ${record.winningPrice},
        to_timestamp(${record.closedAtMs} / 1000.0), ${JSON.stringify(record.bidLog)}::jsonb)
     ON CONFLICT (room_id) DO NOTHING
   `;

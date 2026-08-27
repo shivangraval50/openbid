@@ -34,7 +34,13 @@ function recordAuction(): {
   const log: AuctionEvent[] = [];
 
   for (const id of ["ada", "grace"]) {
-    const event: AuctionEvent = { type: "joined", participantId: id, nickname: id, atMs: 0 };
+    const event: AuctionEvent = {
+      type: "joined",
+      participantId: id,
+      nickname: id,
+      persistent: false,
+      atMs: 0,
+    };
     log.push(event);
     state = reduce(state, event);
   }
@@ -133,7 +139,7 @@ describe("fetchArchivedAuction", () => {
     winningPrice: 400,
     winnerNickname: "ada",
     bidLog: [
-      { type: "joined", participantId: "ada", nickname: "ada", atMs: 0 },
+      { type: "joined", participantId: "ada", nickname: "ada", persistent: false, atMs: 0 },
       { type: "bidPlaced", participantId: "ada", amount: 100, atMs: 10, newEndsAtMs: 20_000 },
       { type: "closed", atMs: 30, winner: { participantId: "ada", amount: 100 } },
     ],

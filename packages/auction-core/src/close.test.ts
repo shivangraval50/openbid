@@ -23,6 +23,7 @@ describe("closeAuction", () => {
       type: "joined",
       participantId: "ada",
       nickname: "ada",
+      persistent: false,
       atMs: 0,
     });
     const decision = validateBid(state, { participantId: "ada", amount: 250, atMs: 5 });

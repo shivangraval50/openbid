@@ -75,7 +75,12 @@ psql "$DATABASE_URL" -c '\d completed_auctions'
 ```
 
 You should see `room_id` (primary key), `item_name`, `starting_price`,
-`winner_nickname`, `winning_price`, `closed_at`, `bid_log`.
+`winner_nickname`, `winner_persistent`, `winning_price`, `closed_at`, `bid_log`.
+
+`winner_persistent` is what makes `/leaderboard` a *signed-in* ranking: the
+query filters on it, so guest wins are archived but never ranked. Nothing has
+ever been deployed from this repo, so there is no migration to run and nothing
+to backfill — the first `psql -f schema.sql` picks the column up.
 
 ---
 
@@ -290,7 +295,7 @@ this key.
    configured) a line of commentary.
 6. Check the archive landed:
    ```bash
-   psql "$DATABASE_URL" -c 'SELECT room_id, item_name, winning_price FROM completed_auctions;'
+   psql "$DATABASE_URL" -c 'SELECT room_id, item_name, winning_price, winner_persistent FROM completed_auctions;'
    ```
    Then open `/leaderboard` and `/replay/<room_id>`.
    - Empty table but a closed auction? The settlement is stuck in the DO's

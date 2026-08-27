@@ -83,6 +83,44 @@ describe("RoomPage", () => {
     expect(props.nickname).toBe("octocat");
   });
 
+  // The first link in the chain that ends at
+  // `completed_auctions.winner_persistent`. `resolveIdentity` has always
+  // computed this flag; until now nothing read it, so a signed-in win was
+  // archived indistinguishably from a guest's and the leaderboard could not
+  // tell them apart. Dropping the prop here fails silently everywhere else
+  // -- LiveRoom's own default is `false` -- so this assertion is the guard.
+  it("passes the resolved identity's persistent flag down to LiveRoom", async () => {
+    fetchSnapshot.mockResolvedValue({
+      seq: 0,
+      serverTime: Date.now(),
+      state: initialState(config),
+    });
+    resolveIdentity.mockResolvedValue({ nickname: "octocat", persistent: true });
+
+    await renderToStaticMarkup(
+      await RoomPage({ params: Promise.resolve({ id: "room-3" }) })
+    );
+
+    const props = liveRoomProps.mock.calls[0]?.[0] as { persistent?: boolean };
+    expect(props.persistent).toBe(true);
+  });
+
+  it("passes a guest's persistent flag down as false rather than omitting it", async () => {
+    fetchSnapshot.mockResolvedValue({
+      seq: 0,
+      serverTime: Date.now(),
+      state: initialState(config),
+    });
+    resolveIdentity.mockResolvedValue({ nickname: "brisk-otter-7f3", persistent: false });
+
+    await renderToStaticMarkup(
+      await RoomPage({ params: Promise.resolve({ id: "room-4" }) })
+    );
+
+    const props = liveRoomProps.mock.calls[0]?.[0] as { persistent?: boolean };
+    expect(props.persistent).toBe(false);
+  });
+
   it("calls notFound instead of rendering LiveRoom when the room has no snapshot", async () => {
     fetchSnapshot.mockResolvedValue(null);
     resolveIdentity.mockResolvedValue({ nickname: "brisk-otter-7f3", persistent: false });

@@ -71,7 +71,7 @@ async function initRoom(id: string) {
   expect(res.status).toBe(201);
 }
 
-async function openSocket(id: string, nickname: string) {
+async function openSocket(id: string, nickname: string, persistent = false) {
   const res = await SELF.fetch(`https://x/rooms/${id}/ws`, {
     headers: { Upgrade: "websocket" },
   });
@@ -81,7 +81,7 @@ async function openSocket(id: string, nickname: string) {
   ws.addEventListener("message", (e) => {
     inbox.push(parseServerMessage(String(e.data)));
   });
-  ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname }));
+  ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname, persistent }));
   return { ws, inbox };
 }
 
@@ -177,7 +177,7 @@ describe("rate limiting", () => {
     // The bypass under test: re-sending hello on the same socket must not
     // hand the bucket a fresh set of tokens. If it did, the bid right after
     // this would be accepted instead of rate limited.
-    ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname: "ada-again" }));
+    ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname: "ada-again", persistent: false }));
     const nextClientSeq = EXPECTED_CAPACITY + 1;
     ws.send(
       encode({

@@ -168,7 +168,7 @@ describe("resolveIdentity", () => {
 
     expect(() =>
       parseClientMessage(
-        encode({ t: "hello", lastSeenSeq: 0, nickname: identity.nickname })
+        encode({ t: "hello", lastSeenSeq: 0, nickname: identity.nickname, persistent: false })
       )
     ).not.toThrow();
   });

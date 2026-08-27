@@ -38,7 +38,7 @@ async function initRoom(id: string, config: AuctionConfig): Promise<void> {
   expect(res.status).toBe(201);
 }
 
-async function openSocket(id: string, nickname: string) {
+async function openSocket(id: string, nickname: string, persistent = false) {
   const res = await SELF.fetch(`https://x/rooms/${id}/ws`, {
     headers: { Upgrade: "websocket" },
   });
@@ -48,7 +48,7 @@ async function openSocket(id: string, nickname: string) {
   ws.addEventListener("message", (e) => {
     inbox.push(parseServerMessage(String(e.data)));
   });
-  ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname }));
+  ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname, persistent }));
   return { ws, inbox };
 }
 
@@ -94,6 +94,7 @@ function seedOutboxRow(state: DurableObjectState, id: string, config: AuctionCon
     itemName: config.itemName,
     startingPrice: config.startingPrice,
     winnerNickname: null,
+    winnerPersistent: false,
     winningPrice: null,
     closedAtMs: Date.now(),
     bidLog: [],
@@ -206,6 +207,10 @@ describe("expiry and settlement", () => {
         expect(record.startingPrice).toBe(config.startingPrice);
         expect(record.winnerNickname).toBe("grace");
         expect(record.winningPrice).toBe(150);
+        // Both bidders connected as guests, so the archived row must not
+        // claim a persistent identity for either -- the leaderboard filters
+        // on this column, and a `true` here would rank a forgeable nickname.
+        expect(record.winnerPersistent).toBe(false);
 
         // A real check on the log's contents, not just "it's an array"
         // (which `bidLog: unknown[]` already guarantees at compile time
@@ -216,6 +221,63 @@ describe("expiry and settlement", () => {
       });
     }
   );
+
+  // The end-to-end assertion for the whole `persistent` path, run through a
+  // real Durable Object in real workerd: the flag rides in on the `hello`,
+  // gets written onto the room's `joined` event, is folded into
+  // `state.participants` by `reduce`, and is read back out at settlement
+  // time -- by `alarm()`, which has no socket to consult. Two bidders with
+  // opposite flags, and the signed-in one wins, so a version that hardcoded
+  // either value, read the flag off the wrong participant, or dropped it
+  // anywhere along that chain fails here.
+  it("records the winner's persistent flag in the settlement, resolved per participant", async () => {
+    const id = roomId("persistent-winner");
+    const config = configEndingIn(2_000);
+    await initRoom(id, config);
+
+    // A guest bids first and loses; the signed-in bidder bids higher and
+    // wins. Opposite flags on the two participants is what makes this test
+    // able to fail on a "return the first participant's flag" bug.
+    const { ws: guestWs, inbox: guestInbox } = await openSocket(id, "brisk-otter-7f3", false);
+    await waitFor(guestInbox, (m) => m.t === "snapshot", "the guest's snapshot");
+    guestWs.send(encode({ t: "bid", clientSeq: 1, amount: 100 }));
+    await waitFor(guestInbox, (m) => m.t === "ack", "the guest's ack");
+
+    const { ws: userWs, inbox: userInbox } = await openSocket(id, "octocat", true);
+    await waitFor(userInbox, (m) => m.t === "snapshot", "octocat's snapshot");
+    userWs.send(encode({ t: "bid", clientSeq: 1, amount: 150 }));
+    await waitFor(userInbox, (m) => m.t === "ack", "octocat's ack");
+
+    // Same margin, and for the same reason, as the outbox-payload test
+    // above: `alarm()`'s `Date.now() >= endsAtMs` check runs inside the DO's
+    // isolate, not here.
+    const remaining = config.endsAtMs - Date.now();
+    if (remaining > 0) {
+      await new Promise((r) => setTimeout(r, remaining + 400));
+    }
+
+    await fireAlarm(id);
+
+    await runInDurableObject(stubFor(id), (_instance: RoomDO, state: DurableObjectState) => {
+      const payloadRows = state.storage.sql
+        .exec<{ payload: string }>("SELECT payload FROM outbox")
+        .toArray();
+      const record = JSON.parse(payloadRows[0]!.payload) as SettlementRecord;
+      expect(record.winnerNickname).toBe("octocat");
+      expect(record.winnerPersistent).toBe(true);
+
+      // And the flag really is per-participant, not room-wide: the losing
+      // guest's own `joined` event still says false.
+      const joins = record.bidLog.filter(
+        (e): e is { type: "joined"; nickname: string; persistent: boolean } =>
+          (e as { type?: string }).type === "joined"
+      );
+      expect(joins.map((j) => [j.nickname, j.persistent])).toEqual([
+        ["brisk-otter-7f3", false],
+        ["octocat", true],
+      ]);
+    });
+  });
 
   it(
     "removes a settlement from the outbox once the archive write succeeds",

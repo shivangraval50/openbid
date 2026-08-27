@@ -31,7 +31,7 @@ async function initRoom(id: string, overrides: Partial<AuctionConfig> = {}) {
   expect(res.status).toBe(201);
 }
 
-async function openSocket(id: string, nickname: string) {
+async function openSocket(id: string, nickname: string, persistent = false) {
   const res = await SELF.fetch(`https://x/rooms/${id}/ws`, {
     headers: { Upgrade: "websocket" },
   });
@@ -45,7 +45,7 @@ async function openSocket(id: string, nickname: string) {
     inbox.push(parseServerMessage(String(event.data)));
   });
 
-  ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname }));
+  ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname, persistent }));
   return { ws, inbox };
 }
 
@@ -299,7 +299,7 @@ describe("RoomDO", () => {
     const { ws, inbox } = await openSocket(id, "ada");
     await waitFor(inbox, (m) => m.t === "snapshot", "first snapshot");
 
-    ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname: "ada-again" }));
+    ws.send(encode({ t: "hello", lastSeenSeq: 0, nickname: "ada-again", persistent: false }));
     await waitFor(
       inbox,
       () => inbox.filter((m) => m.t === "snapshot").length >= 2,

@@ -32,7 +32,7 @@ const config: AuctionConfig = {
 function seededState(overrides: Partial<AuctionState> = {}): AuctionState {
   return {
     ...initialState(config),
-    participants: { me: { id: "me", nickname: "me", budget: 500 } },
+    participants: { me: { id: "me", nickname: "me", budget: 500, persistent: false } },
     ...overrides,
   };
 }
