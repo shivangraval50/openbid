@@ -1,5 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import { reduce, type AuctionEvent, type AuctionState } from "@openbid/auction-core";
+import { reduce, type AuctionState } from "@openbid/auction-core";
 import type { RejectReason, ServerMessage } from "@openbid/protocol";
 
 export interface PendingBid {
@@ -73,11 +73,15 @@ export function createAuctionStore(): AuctionStore {
           // server has committed, so any bid still pending locally is
           // moot -- either it is already folded into this state, or the
           // server never saw it and retrying silently would be wrong.
-          // `state` crosses the wire as `unknown` (protocol does not own
-          // an auction-core schema); `youAre` is a real, validated string
-          // field on the message, so it needs no cast at all.
+          //
+          // No cast on `msg.state`: `serverMessageSchema` validates it with
+          // `auctionStateSchema`, and this assignment into `server:
+          // AuctionState | null` is the structural check that protocol's
+          // wire shape and auction-core's internal type still agree -- the
+          // same guard `RoomDO` applies to `AuctionConfig` and `replay.ts`
+          // applies to an archived row.
           set({
-            server: msg.state as AuctionState,
+            server: msg.state,
             youAre: msg.youAre,
             lastSeenSeq: msg.seq,
             pending: [],
@@ -91,8 +95,13 @@ export function createAuctionStore(): AuctionStore {
           if (msg.seq <= get().lastSeenSeq) return;
           const server = get().server;
           if (server === null) return; // no snapshot yet to apply this on top of
+          // `msg.event` is validated by `auctionEventSchema`, not cast.
+          // That matters more here than on the snapshot: `reduce`'s switch
+          // has no default case, so an event whose `type` it does not
+          // recognise would fall through and return `undefined` as the new
+          // state -- a silent bug, not a caught error.
           set({
-            server: reduce(server, msg.event as AuctionEvent),
+            server: reduce(server, msg.event),
             lastSeenSeq: msg.seq,
           });
           return;

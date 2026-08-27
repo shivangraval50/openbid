@@ -143,6 +143,52 @@ export const archivedAuctionSchema = z.object({
 });
 export type ArchivedAuction = z.infer<typeof archivedAuctionSchema>;
 
+// Structurally mirrors `@openbid/auction-core`'s `AuctionState`, on the same
+// terms and for the same reason as `auctionEventSchema` above: the store
+// assigns the parsed result where auction-core's `AuctionState` is expected,
+// so any drift between the two independently-declared shapes is a type error
+// at that assignment rather than a runtime surprise. In particular, `z.object`
+// STRIPS unknown keys, so a field added to `AuctionState` but not to this
+// schema would otherwise be silently dropped off every snapshot -- that
+// assignment is what turns it into a compile failure instead.
+//
+// This exists so `serverMessageSchema`'s `snapshot.state` can be a real schema
+// instead of `z.unknown()` plus a cast in the store. See the note on that
+// message below for why the socket boundary earns validation even though
+// `RoomDO` is its only producer.
+const participantSchema = z.object({
+  id: z.string().min(1),
+  nickname: z.string().min(1),
+  // Not `money`: a budget legitimately reaches 0 in a room configured with a
+  // zero starting budget, and nothing in `reduce` forbids it.
+  budget: z.number().finite(),
+  // `.default(false)` for the same forward/backward-compatibility reason as
+  // the `joined` event's own flag: a snapshot from a Worker that predates the
+  // field must still be usable, as a guest.
+  persistent: z.boolean().default(false),
+});
+
+const bidSchema = z.object({
+  participantId: z.string().min(1),
+  amount: z.number().finite(),
+  atMs: z.number().finite(),
+});
+
+const winnerSchema = z.object({
+  participantId: z.string().min(1),
+  amount: z.number().finite(),
+});
+
+export const auctionStateSchema = z.object({
+  config: auctionConfigSchema,
+  status: z.enum(["open", "closed"]),
+  endsAtMs: z.number().finite(),
+  highBid: bidSchema.nullable(),
+  participants: z.record(z.string(), participantSchema),
+  winner: winnerSchema.nullable(),
+});
+export type AuctionState = z.infer<typeof auctionStateSchema>;
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   z.object({
     t: z.literal("hello"),
@@ -170,18 +216,43 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
+// `state` and `event` are real schemas, not `z.unknown()`. They used to be
+// unknown, which forced `@openbid/store` to write `msg.state as AuctionState`
+// and `reduce(server, msg.event as AuctionEvent)` -- two hand-rolled casts on
+// wire input, in a repo whose stated constraint is that every wire message is
+// parsed through a Zod schema on BOTH ends with no such casts. The envelopes
+// were; these payloads were not.
+//
+// The argument for closing that is the one `auctionEventSchema` already makes
+// for the Neon read path, and it transfers verbatim: `reduce`'s switch has no
+// default case, so an unrecognised `type` reaching it is a silent no-op, not a
+// caught error, and `msg.state as AuctionState` asserts a shape nothing
+// checked. It is true that `RoomDO` is the sole producer today and round-trips
+// its own `validateBid` output, so this is not a live correctness bug -- but
+// "the only producer is trustworthy" is exactly the argument that was rejected
+// for `lobbyPriceSchema` (also produced only in-repo, also validated) and for
+// the archive boundary, and the socket is a strictly *less* controlled channel
+// than either: anything on the network can send frames to a client, and a
+// version skew between an older Worker and a newer client is a real deploy
+// state here, since the two deploy independently.
+//
+// Cost of being wrong in the strict direction: a payload that fails to parse
+// throws out of `parseServerMessage`, which `connectRoom`'s `onmessage` now
+// catches and drops (see apps/web/src/lib/socket.ts) rather than letting it
+// escape as an unhandled error -- a dropped frame, recoverable by the DO's
+// resume-on-reconnect replay, instead of a corrupted store.
 export const serverMessageSchema = z.discriminatedUnion("t", [
   z.object({
     t: z.literal("snapshot"),
     seq,
     serverTime: z.number(),
-    state: z.unknown(),
+    state: auctionStateSchema,
     // Per-connection view metadata (which participant this socket is), not
     // part of the auction state itself — kept as a sibling field so
     // consumers never have to cast `state` to smuggle it back out.
     youAre: z.string(),
   }),
-  z.object({ t: z.literal("delta"), seq, serverTime: z.number(), event: z.unknown() }),
+  z.object({ t: z.literal("delta"), seq, serverTime: z.number(), event: auctionEventSchema }),
   z.object({ t: z.literal("ack"), clientSeq: seq, seq }),
   z.object({ t: z.literal("reject"), clientSeq: seq, reason: rejectReasonSchema }),
   z.object({ t: z.literal("pong"), clientTime: z.number(), serverTime: z.number() }),

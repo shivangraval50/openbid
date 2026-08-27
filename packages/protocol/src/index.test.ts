@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import {
   auctionConfigSchema,
   auctionEventSchema,
+  auctionStateSchema,
   archivedAuctionSchema,
   lobbyRegisterSchema,
   lobbyPriceSchema,
@@ -10,6 +11,26 @@ import {
   parseServerMessage,
   encode,
 } from "./index.js";
+
+/** A structurally complete `AuctionState`, as `RoomDO` would actually send
+ *  it on a snapshot. Shared by the snapshot-envelope cases and by
+ *  `auctionStateSchema`'s own describe block below. */
+const validState = {
+  config: {
+    itemName: "A rare compiler",
+    startingPrice: 100,
+    minIncrement: 10,
+    startingBudget: 500,
+    antiSnipeWindowMs: 10_000,
+    antiSnipeExtensionMs: 15_000,
+    endsAtMs: 1_000_000,
+  },
+  status: "open",
+  endsAtMs: 1_000_000,
+  highBid: null,
+  participants: { ada: { id: "ada", nickname: "ada", budget: 500, persistent: true } },
+  winner: null,
+} as const;
 
 describe("parseClientMessage", () => {
   it("accepts a bid", () => {
@@ -80,6 +101,104 @@ describe("parseServerMessage", () => {
 
   it("rejects malformed JSON", () => {
     expect(() => parseServerMessage("{{{")).toThrow(ZodError);
+  });
+
+  // `snapshot.state` and `delta.event` used to be `z.unknown()`, which forced
+  // `@openbid/store` to write `msg.state as AuctionState` and `reduce(server,
+  // msg.event as AuctionEvent)` -- two hand-rolled casts on wire input, in a
+  // repo whose Global Constraint says every wire message is parsed through a
+  // Zod schema on both ends with no such casts. These four tests are what a
+  // revert to `z.unknown()` fails.
+  it("accepts a snapshot whose state is a well-formed auction state", () => {
+    const msg = parseServerMessage(
+      JSON.stringify({ t: "snapshot", seq: 4, serverTime: 1_000, state: validState, youAre: "ada" })
+    );
+    expect(msg).toEqual({
+      t: "snapshot",
+      seq: 4,
+      serverTime: 1_000,
+      state: validState,
+      youAre: "ada",
+    });
+  });
+
+  it("rejects a snapshot whose state is not an auction state", () => {
+    expect(() =>
+      parseServerMessage(
+        JSON.stringify({ t: "snapshot", seq: 4, serverTime: 1_000, state: {}, youAre: "ada" })
+      )
+    ).toThrow(ZodError);
+  });
+
+  // The hazard that actually matters, and the one `auctionEventSchema`'s own
+  // comment already named for the Neon path: `reduce`'s switch has no default
+  // case, so an event whose `type` it does not recognise falls straight
+  // through and returns `undefined` as the next state.
+  it("rejects a delta whose event type is not one reduce recognises", () => {
+    expect(() =>
+      parseServerMessage(
+        JSON.stringify({
+          t: "delta",
+          seq: 5,
+          serverTime: 1_000,
+          event: { type: "bidRetracted", participantId: "ada", atMs: 0 },
+        })
+      )
+    ).toThrow(ZodError);
+  });
+
+  it("rejects a delta whose bid amount arrived as a string", () => {
+    expect(() =>
+      parseServerMessage(
+        JSON.stringify({
+          t: "delta",
+          seq: 5,
+          serverTime: 1_000,
+          event: {
+            type: "bidPlaced",
+            participantId: "ada",
+            amount: "300",
+            atMs: 10,
+            newEndsAtMs: 20_000,
+          },
+        })
+      )
+    ).toThrow(ZodError);
+  });
+});
+
+describe("auctionStateSchema", () => {
+  it("accepts a well-formed state", () => {
+    expect(auctionStateSchema.parse(validState)).toEqual(validState);
+  });
+
+  it("rejects a state missing a required field", () => {
+    const { endsAtMs, ...rest } = validState;
+    expect(() => auctionStateSchema.parse(rest)).toThrow(ZodError);
+  });
+
+  it("rejects a state whose status is not open or closed", () => {
+    expect(() => auctionStateSchema.parse({ ...validState, status: "paused" })).toThrow(ZodError);
+  });
+
+  // `z.object` strips unknown keys, so a field present on auction-core's
+  // `AuctionState` but absent from this schema would be silently dropped off
+  // every snapshot rather than rejected. What catches that is not a runtime
+  // assertion but the assignment in `@openbid/store` (`server: msg.state`,
+  // into an `AuctionState | null`), which fails to compile the moment the two
+  // shapes drift. This test pins the runtime half: a participant record is
+  // validated field by field, not waved through as an object.
+  it("rejects a participant record that is not a participant", () => {
+    const broken = { ...validState, participants: { ada: { id: "ada" } } };
+    expect(() => auctionStateSchema.parse(broken)).toThrow(ZodError);
+  });
+
+  it("defaults a participant's persistent flag to false when the field is absent", () => {
+    const legacy = {
+      ...validState,
+      participants: { ada: { id: "ada", nickname: "ada", budget: 500 } },
+    };
+    expect(auctionStateSchema.parse(legacy).participants["ada"]?.persistent).toBe(false);
   });
 });
 
