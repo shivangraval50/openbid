@@ -1,0 +1,22 @@
+/* A footnote in the instrument's stat strip. feedback.md: "it often works
+ * well to display status information in a passive way so that people can view
+ * it when they need it" -- clock skew matters enormously to whether this app
+ * is trustworthy and not at all to placing a bid, so it is present, precise,
+ * and quiet. */
+
+.latency {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ob-space-2);
+  color: var(--ob-label-tertiary);
+  /* Monospaced so the millisecond figure does not reflow the strip as it
+   * changes. NOTE: nothing may be added INSIDE the element carrying
+   * data-testid="latency" -- Latency.test.tsx asserts the placeholder
+   * variant's text contains no digit at all, so a decorative numeral or a
+   * unit glyph in there would fail it. */
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-caption);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  white-space: nowrap;
+}

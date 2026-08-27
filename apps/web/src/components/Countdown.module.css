@@ -1,0 +1,76 @@
+.clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ob-space-1);
+  /* A fixed minimum so the extension badge appearing and disappearing cannot
+   * move the price beside it. */
+  min-height: 4.25rem;
+}
+
+.time {
+  /* Tabular monospace numerals, so 1:09 -> 1:10 does not shuffle the digits
+   * sideways. Same rule as the price: see globals.css --ob-font-numeric. */
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-title1);
+  font-weight: var(--ob-weight-medium);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  line-height: var(--ob-leading-tight);
+  letter-spacing: -0.02em;
+  color: var(--ob-label);
+  font-variant-ligatures: none;
+  transition: color var(--ob-duration-base) var(--ob-ease);
+}
+
+/* Time pressure is the ONE meaning the urgent colour carries anywhere in this
+ * app -- color.md, "Avoid using the same color to mean different things." The
+ * `data-urgent` attribute it hangs off is pre-existing behaviour with its own
+ * boundary tests; this only gives it a visual. */
+.time[data-urgent="true"] {
+  color: var(--ob-urgent);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ob-space-1);
+  padding: 0.1rem var(--ob-space-2);
+  background: var(--ob-urgent-soft);
+  color: var(--ob-urgent);
+  border: 1px solid color-mix(in srgb, var(--ob-urgent) 35%, transparent);
+  border-radius: var(--ob-radius-pill);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  white-space: nowrap;
+  /* feedback.md: "Aim for brevity and precision in feedback animations."
+   * One 200ms entrance, no loop -- the badge itself then simply sits there
+   * for a few seconds and leaves. */
+  animation: badgeIn var(--ob-duration-base) var(--ob-ease) both;
+}
+
+.badgeDelta {
+  font-family: var(--ob-font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--ob-weight-semibold);
+}
+
+@keyframes badgeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* motion.md, "Make motion optional": with Reduce Motion on, the badge simply
+ * is there. Nothing is lost, because the badge's meaning is carried by its
+ * words and its colour, never by the way it arrives. */
+@media (prefers-reduced-motion: reduce) {
+  .badge {
+    animation: none;
+  }
+}

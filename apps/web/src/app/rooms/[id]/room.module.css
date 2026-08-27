@@ -1,0 +1,261 @@
+/* The room. Three groups, in importance order down the page:
+ *   1. what the lot is, and whether we are connected to it
+ *   2. the instrument -- price, clock, chart, and the numbers that qualify
+ *      them -- as ONE panel
+ *   3. the one action, and its result
+ *
+ * layout.md: "Place items to convey their relative importance. People often
+ * start by viewing items in reading order ... so it generally works well to
+ * place the most important items near the top and leading side."
+ *
+ * The tension this file resolves: Apple's language wants air, a market
+ * readout wants density. The resolution is the one Stocks and Activity use --
+ * tight WITHIN a group (spacing steps 1-3, shared baselines, hairline rules)
+ * and generous BETWEEN groups (steps 5-7, distinct surfaces). Nothing here is
+ * dense because it ran out of room; it is dense where density is the point.
+ */
+
+.room {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-5);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ob-space-4);
+  /* The connection pill lives on this row. Reserving its height here means
+   * connecting -> open (which unmounts the pill entirely) does not move the
+   * price down the page. */
+  min-height: 3rem;
+}
+
+.eyebrow {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lotName {
+  margin-top: var(--ob-space-1);
+  font-size: var(--ob-type-title2);
+  font-weight: var(--ob-weight-semibold);
+  line-height: var(--ob-leading-snug);
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.headStatus {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+  flex: none;
+}
+
+/* ---- The instrument ---------------------------------------------------
+ * One card, one border, one background. The price readout and the chart are
+ * two views of the same series, and charting-data.md is explicit that when
+ * that is true they should not look like unrelated widgets: "Maintain
+ * continuity among multiple charts that use the same data ... use one chart
+ * type and consistent colors, annotations, layouts, and descriptive text to
+ * signal that the dataset remains the same."
+ */
+.instrument {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-5);
+  padding: var(--ob-space-5);
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-hairline);
+  border-radius: var(--ob-radius-lg);
+  box-shadow: var(--ob-shadow);
+  transition: border-color var(--ob-duration-base) var(--ob-ease);
+}
+
+/* While the socket is not open the panel's own edge says so, in addition to
+ * the pill in the header -- noticeable, and nowhere near covering the price.
+ * The price itself is never dimmed: a stale number is still the best number
+ * available, and making it hard to read would be the wrong trade. */
+.instrument[data-live="stale"] {
+  border-color: color-mix(in srgb, var(--ob-urgent) 45%, var(--ob-hairline));
+}
+
+.instrument[data-live="down"] {
+  border-color: color-mix(in srgb, var(--ob-rejected) 55%, var(--ob-hairline));
+}
+
+.readout {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ob-space-4);
+}
+
+.clockCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ob-space-1);
+  flex: none;
+}
+
+/* A hairline-separated strip of qualifying figures. Tight within (step 3
+ * gaps), and set off from the chart above by a rule rather than by more
+ * space -- layout.md: "you might use negative space, background shapes,
+ * colors, materials, or separator lines to show when elements are related." */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ob-space-2) var(--ob-space-5);
+  padding-top: var(--ob-space-4);
+  border-top: 1px solid var(--ob-hairline);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.statLabel {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.statValue {
+  color: var(--ob-label-secondary);
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-footnote);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-variant-ligatures: none;
+}
+
+/* ---- The action ------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-4);
+  padding: var(--ob-space-5);
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-hairline);
+  border-radius: var(--ob-radius-lg);
+}
+
+/* The settled result. Deliberately not role="status" or role="alert": the
+ * room already has exactly one role="status" (ConnectionBanner) and exactly
+ * one role="alert" inside the form (BidForm's rejection), and both are
+ * asserted on as single matches by the end-to-end suite. */
+.outcome {
+  display: flex;
+  align-items: center;
+  gap: var(--ob-space-3);
+  padding: var(--ob-space-3) var(--ob-space-4);
+  background: var(--ob-confirmed-soft);
+  color: var(--ob-confirmed);
+  border: 1px solid color-mix(in srgb, var(--ob-confirmed) 35%, transparent);
+  border-radius: var(--ob-radius-md);
+  font-size: var(--ob-type-body);
+  font-weight: var(--ob-weight-medium);
+}
+
+/* "Closed with no bids" is not a success, so it does not wear the success
+ * colour -- color.md, "Avoid using the same color to mean different things." */
+.outcomeEmpty {
+  background: var(--ob-surface-raised);
+  color: var(--ob-label-secondary);
+  border-color: var(--ob-hairline);
+  font-weight: var(--ob-weight-regular);
+}
+
+/* ---- Loading ---------------------------------------------------------
+ * Practically unreachable (the store is seeded synchronously during render,
+ * so `server` is non-null on the very first paint including the server's),
+ * but loading.md is unambiguous: "Show something as soon as possible. If you
+ * make people wait ... they can interpret the lack of content as a problem
+ * with your app." So this reserves the instrument's shape rather than
+ * collapsing the page to one line of text. */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-hairline);
+  border-radius: var(--ob-radius-lg);
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-subhead);
+}
+
+/* ---- Narrow viewports -------------------------------------------------
+ * A recruiter may well open this on a phone. Below 34rem the clock moves
+ * under the price rather than competing with it for the same line -- exactly
+ * typography.md's advice for a horizontally constrained context: "consider
+ * using a stacked layout where text appears above secondary items."
+ */
+@media (max-width: 34rem) {
+  .instrument,
+  .actions {
+    padding: var(--ob-space-4);
+  }
+
+  .readout {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--ob-space-4);
+  }
+
+  .clockCell {
+    align-items: flex-start;
+    padding-top: var(--ob-space-3);
+    border-top: 1px solid var(--ob-hairline);
+  }
+
+  .head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--ob-space-3);
+  }
+}
+
+/* Wide enough for the readout to breathe: give the chart the greater share,
+ * because a trend needs width and a single number does not. */
+@media (min-width: 60rem) {
+  .instrument {
+    display: grid;
+    grid-template-columns: minmax(15rem, 20rem) 1fr;
+    grid-template-areas:
+      "readout chart"
+      "stats stats";
+    gap: var(--ob-space-5) var(--ob-space-6);
+    align-items: start;
+  }
+
+  .readout {
+    grid-area: readout;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--ob-space-4);
+  }
+
+  .clockCell {
+    align-items: flex-start;
+  }
+
+  .chartCell {
+    grid-area: chart;
+    min-width: 0;
+  }
+
+  .stats {
+    grid-area: stats;
+  }
+}

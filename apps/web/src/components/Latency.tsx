@@ -1,3 +1,5 @@
+import styles from "./Latency.module.css";
+
 const SYNCED_THRESHOLD_MS = 250;
 
 export function describeSkew(offsetMs: number): string {
@@ -21,7 +23,11 @@ export function describeSkew(offsetMs: number): string {
 // anywhere in this component now.
 export function Latency({ offsetMs }: { offsetMs: number | null }) {
   return (
-    <p data-testid="latency" title="Difference between this browser's clock and the server's">
+    <p
+      className={styles.latency}
+      data-testid="latency"
+      title="Difference between this browser's clock and the server's"
+    >
       {offsetMs === null ? "clock measuring…" : describeSkew(offsetMs)}
     </p>
   );

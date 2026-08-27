@@ -12,12 +12,34 @@ import {
 import { connectRoom, type ConnStatus, type RoomConnection } from "@/lib/socket";
 import { useAuctionSelector } from "@/hooks/useAuctionStore";
 import { BidForm } from "@/components/BidForm";
+import { useBidPhase } from "@/components/bidPhase";
 import { Commentary } from "@/components/Commentary";
 import { ConnectionBanner } from "@/components/ConnectionBanner";
-import { Countdown } from "@/components/Countdown";
+import { Countdown, extensionDeltaMs } from "@/components/Countdown";
 import { PriceLadder } from "@/components/PriceLadder";
 import { Latency } from "@/components/Latency";
 import { PriceChart } from "@/components/PriceChart";
+import styles from "./room.module.css";
+
+/**
+ * How long the anti-snipe notice stays up after the deadline jumps. Long
+ * enough to be read without hunting for it, short enough that it is gone
+ * before the next bid -- motion.md, "Aim for brevity and precision in
+ * feedback animations."
+ */
+const EXTENSION_NOTICE_MS = 6_000;
+
+/**
+ * How trustworthy the numbers on screen currently are. Drives the
+ * instrument panel's own edge, so a dropped connection is visible even to
+ * someone looking straight at the price rather than at the header pill --
+ * without anything being drawn on top of the price.
+ */
+function liveness(status: ConnStatus): "live" | "stale" | "down" {
+  if (status === "reconnecting") return "stale";
+  if (status === "closed") return "down";
+  return "live";
+}
 
 export function LiveRoom(props: {
   roomId: string;
@@ -26,6 +48,12 @@ export function LiveRoom(props: {
   initialState: AuctionState;
   socketBaseUrl: string;
   nickname?: string;
+  /**
+   * The lot's name, passed down rather than read off the seeded store so
+   * that the heading renders even on the (practically unreachable) branch
+   * where `server` is still null.
+   */
+  itemName: string;
 }) {
   // Seeded synchronously, during render, inside the same `useMemo` that
   // creates the store -- NOT in a `useEffect`. Effects never run during
@@ -102,10 +130,53 @@ export function LiveRoom(props: {
   const pendingCount = useAuctionSelector(store, selectPendingCount);
   const lastReject = useAuctionSelector(store, (s) => s.lastReject);
   const clockOffsetMs = useAuctionSelector(store, (s) => s.clockOffsetMs);
+  const youAre = useAuctionSelector(store, (s) => s.youAre);
   const msRemaining = selectMsRemaining(store.getState());
   const serverNow = selectServerNow(store.getState());
 
-  if (server === null) return <p>Loading…</p>;
+  // The optimistic-bid lifecycle. See components/bidPhase.ts: `pending` is a
+  // state you can read off a snapshot, `confirmed` and `rejected` are
+  // transitions and are only visible by comparing consecutive ones.
+  const phase = useBidPhase({
+    pendingCount,
+    lastRejectSeq: lastReject?.clientSeq ?? null,
+  });
+
+  // The anti-snipe extension. A bid inside the closing window pushes
+  // `endsAtMs` out (see auction-core's validateBid), and without a marker the
+  // countdown simply jumps upward -- which reads as a bug rather than as the
+  // rule working. `previousEndsAtRef` is seeded with the CURRENT value, so
+  // the first effect run after mount can never fire a spurious notice; that
+  // is also what keeps this hydration-safe, since the server render and the
+  // client's first render both show no notice.
+  const endsAtMs = server?.endsAtMs ?? null;
+  const [extendedByMs, setExtendedByMs] = useState<number | null>(null);
+  const previousEndsAtRef = useRef(endsAtMs);
+
+  useEffect(() => {
+    const previous = previousEndsAtRef.current;
+    previousEndsAtRef.current = endsAtMs;
+    if (previous === null || endsAtMs === null) return;
+    const delta = extensionDeltaMs(previous, endsAtMs);
+    if (delta === null) return;
+    setExtendedByMs(delta);
+    const id = setTimeout(() => setExtendedByMs(null), EXTENSION_NOTICE_MS);
+    return () => clearTimeout(id);
+  }, [endsAtMs]);
+
+  if (server === null) {
+    return (
+      <>
+        <header className={styles.head}>
+          <div>
+            <p className={styles.eyebrow}>Lot</p>
+            <h1 className={styles.lotName}>{props.itemName}</h1>
+          </div>
+        </header>
+        <p className={styles.loading}>Loading…</p>
+      </>
+    );
+  }
 
   // Two distinct notions of "over", deliberately not collapsed:
   //
@@ -129,44 +200,110 @@ export function LiveRoom(props: {
       ? null
       : server.participants[server.winner.participantId]?.nickname ?? null;
 
+  const minimum = minimumBid(server);
+  const bidderCount = Object.keys(server.participants).length;
+  const budget = youAre === null ? null : server.participants[youAre]?.budget ?? null;
+
   return (
     <>
-      <ConnectionBanner status={status} />
-      <Countdown msRemaining={msRemaining} />
-      <PriceLadder state={server} displayPrice={displayPrice} pendingCount={pendingCount} />
-      <PriceChart price={displayPrice} serverNow={serverNow} />
-      <Latency offsetMs={clockOffsetMs} />
-      <BidForm
-        minimum={minimumBid(server)}
-        disabled={closed || status !== "open"}
-        rejectReason={lastReject?.reason ?? null}
-        onBid={(amount) => {
-          const clientSeq = store.getState().placeOptimisticBid(amount);
-          connRef.current?.send({ t: "bid", clientSeq, amount });
-        }}
-      />
-      {closed ? (
-        // Resolved by nickname, never by comparing `youAre` to
-        // `winner.participantId`: a reconnecting client gets a *new*
-        // participantId, so that comparison would tell a winner who
-        // disconnected before close that they lost. No "you won" self
-        // -indicator is rendered here for the same reason -- see the task
-        // report for the open question on whether one belongs at all.
-        <p data-testid="outcome">
-          {server.winner === null
-            ? "Closed with no bids."
-            : `Won by ${winnerNickname ?? "unknown"} at ${server.winner.amount}.`}
-        </p>
-      ) : null}
-      {/* Decoration, and mounted unconditionally so it can observe the
-          open -> settled transition. Renders nothing at all until (and
-          unless) commentary actually arrives -- see Commentary.tsx. */}
-      <Commentary
-        settled={settled}
-        itemName={server.config.itemName}
-        winner={winnerNickname}
-        price={server.winner?.amount ?? null}
-      />
+      <header className={styles.head}>
+        <div>
+          <p className={styles.eyebrow}>Lot</p>
+          <h1 className={styles.lotName}>{props.itemName}</h1>
+        </div>
+        {/* The connection pill sits in the header, on the same line as the
+            lot name: prominent, permanently in view (the page header is
+            sticky), and structurally incapable of covering the price. Its
+            slot's height is reserved by `.head`, so the pill unmounting on
+            a successful connect does not move the price. */}
+        <div className={styles.headStatus}>
+          <ConnectionBanner status={status} />
+        </div>
+      </header>
+
+      {/* ONE panel, not two widgets: the price readout and the chart are two
+          views of the same series and share a card, a numeric face and an
+          accent. See room.module.css and PriceLadder.module.css for the
+          charting-data.md guidance behind that. */}
+      <section
+        className={styles.instrument}
+        data-live={liveness(status)}
+        aria-label="Auction instrument"
+      >
+        <div className={styles.readout}>
+          <PriceLadder
+            state={server}
+            displayPrice={displayPrice}
+            pendingCount={pendingCount}
+            minimum={minimum}
+            phase={phase}
+          />
+          <div className={styles.clockCell}>
+            <p className={styles.eyebrow}>Time remaining</p>
+            <Countdown msRemaining={msRemaining} extendedByMs={extendedByMs} />
+          </div>
+        </div>
+        <div className={styles.chartCell}>
+          <PriceChart price={displayPrice} serverNow={serverNow} />
+        </div>
+        <div className={styles.stats}>
+          <div className={styles.stat}>
+            <span className={styles.statLabel}>Min increment</span>
+            <span className={styles.statValue}>{server.config.minIncrement}</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statLabel}>Bidders</span>
+            <span className={styles.statValue}>{bidderCount}</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statLabel}>Your budget</span>
+            <span className={styles.statValue}>{budget === null ? "—" : budget}</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statLabel}>Clock</span>
+            <Latency offsetMs={clockOffsetMs} />
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.actions} aria-label="Place a bid">
+        <BidForm
+          minimum={minimum}
+          disabled={closed || status !== "open"}
+          rejectReason={lastReject?.reason ?? null}
+          onBid={(amount) => {
+            const clientSeq = store.getState().placeOptimisticBid(amount);
+            connRef.current?.send({ t: "bid", clientSeq, amount });
+          }}
+        />
+        {closed ? (
+          // Resolved by nickname, never by comparing `youAre` to
+          // `winner.participantId`: a reconnecting client gets a *new*
+          // participantId, so that comparison would tell a winner who
+          // disconnected before close that they lost. No "you won" self
+          // -indicator is rendered here for the same reason -- see the task
+          // report for the open question on whether one belongs at all.
+          <p
+            className={`${styles.outcome} ${
+              server.winner === null ? styles.outcomeEmpty : ""
+            }`}
+            data-testid="outcome"
+          >
+            {server.winner === null
+              ? "Closed with no bids."
+              : `Won by ${winnerNickname ?? "unknown"} at ${server.winner.amount}.`}
+          </p>
+        ) : null}
+        {/* Decoration, and mounted unconditionally so it can observe the
+            open -> settled transition. Renders nothing at all until (and
+            unless) commentary actually arrives -- see Commentary.tsx. */}
+        <Commentary
+          settled={settled}
+          itemName={server.config.itemName}
+          winner={winnerNickname}
+          price={server.winner?.amount ?? null}
+        />
+      </section>
     </>
   );
 }

@@ -113,3 +113,56 @@ describe("createPriceChart", () => {
     });
   });
 });
+
+describe("createPriceChart appearance options", () => {
+  function renderTwoPoints(opts?: Parameters<typeof createPriceChart>[1]) {
+    const canvas = fakeCanvas();
+    const chart = createPriceChart(canvas, opts);
+    chart.push({ tMs: 0, price: 100 });
+    chart.push({ tMs: 100, price: 200 });
+    chart.render();
+    return canvas.getContext("2d") as unknown as {
+      strokeStyle: string;
+      lineWidth: number;
+      moveTo: { mock: { calls: Array<Array<number>> } };
+      lineTo: { mock: { calls: Array<Array<number>> } };
+    };
+  }
+
+  // The canvas 2D default strokeStyle is opaque black, which is invisible on
+  // this app's dark surface -- the line was being drawn all along and simply
+  // could not be seen. This is the fix, and the assertion that it reaches the
+  // context.
+  it("strokes in the caller's colour", () => {
+    expect(renderTwoPoints({ stroke: "#64b0ff" }).strokeStyle).toBe("#64b0ff");
+  });
+
+  // Absent an explicit colour the context keeps whatever it already had, so a
+  // caller that manages strokeStyle itself is not overridden.
+  it("leaves strokeStyle alone when no colour is given", () => {
+    expect(renderTwoPoints().strokeStyle).toBe("");
+  });
+
+  it("uses the caller's line width", () => {
+    expect(renderTwoPoints({ lineWidth: 6 }).lineWidth).toBe(6);
+  });
+
+  it("defaults the line width rather than leaving it at zero", () => {
+    expect(renderTwoPoints().lineWidth).toBe(2);
+  });
+
+  // Padding is what keeps a 2px line from being clipped in half at the top
+  // and bottom of the plot. It scales with devicePixelRatio, so it has to be
+  // a parameter rather than a constant.
+  it("insets the plot by the caller's padding", () => {
+    const ctx = renderTwoPoints({ padding: 20 });
+    const [firstX, firstY] = ctx.moveTo.mock.calls[0]!;
+    const [lastX, lastY] = ctx.lineTo.mock.calls[0]!;
+    // canvas is 400x200 (see fakeCanvas); price rises, so the first point
+    // sits on the bottom inset and the last on the top inset.
+    expect(firstX).toBe(20);
+    expect(firstY).toBe(180);
+    expect(lastX).toBe(380);
+    expect(lastY).toBe(20);
+  });
+});

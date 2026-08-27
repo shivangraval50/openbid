@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { AuctionConfig } from "@openbid/auction-core";
 import { fetchArchivedAuction } from "@/lib/replay";
 import { Scrubber } from "./Scrubber";
+import styles from "./replay.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +33,11 @@ export default async function ReplayPage({ params }: { params: Promise<{ id: str
   };
 
   return (
-    <main>
-      <h1>Replay — {archived.itemName}</h1>
+    <main className={styles.page}>
+      <div className={styles.head}>
+        {/* Heading copy unchanged, verbatim. */}
+        <h1 className={styles.title}>Replay — {archived.itemName}</h1>
+      </div>
       <Scrubber config={config} events={archived.bidLog} />
     </main>
   );

@@ -1,0 +1,223 @@
+/* Replay. The same instrument vocabulary as the live room -- same numeric
+ * face, same eyebrow labels, same card -- because it is showing the same kind
+ * of data. charting-data.md: "Prefer consistency across multiple charts,
+ * deviating only when you need to highlight differences ... Using a
+ * consistent visual approach lets people use what they learn about one chart
+ * to help them understand another."
+ *
+ * The one deliberate difference is the accent: nothing here is live, so
+ * nothing wears the live-state colours. The scrub track is the only accented
+ * element, because it is the only thing the reader can act on.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-5);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-1);
+}
+
+.eyebrow {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.title {
+  font-size: var(--ob-type-title2);
+  font-weight: var(--ob-weight-semibold);
+  line-height: var(--ob-leading-snug);
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-5);
+  padding: var(--ob-space-5);
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-hairline);
+  border-radius: var(--ob-radius-lg);
+  box-shadow: var(--ob-shadow);
+}
+
+.readout {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ob-space-4);
+}
+
+.priceCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-1);
+  min-width: 0;
+}
+
+.price {
+  /* Same face, weight and tracking as the live room's price, one step down
+   * in size: this is a record, not a live figure. */
+  font-family: var(--ob-font-numeric);
+  font-size: clamp(2.25rem, 8vw, 3rem);
+  font-weight: var(--ob-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-variant-ligatures: none;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.statusCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ob-space-1);
+  flex: none;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ob-space-1);
+  padding: 0.15rem var(--ob-space-2);
+  border-radius: var(--ob-radius-pill);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.statusOpen {
+  background: var(--ob-accent-soft);
+  color: var(--ob-accent);
+}
+
+.statusClosed {
+  background: var(--ob-surface-raised);
+  color: var(--ob-label-secondary);
+}
+
+/* ---- The scrub control -------------------------------------------------
+ * A range input, styled rather than replaced. focus-and-selection.md prefers
+ * system-provided behaviour, and a native <input type="range"> already gives
+ * keyboard stepping, Home/End, and screen-reader value announcement for free
+ * -- rebuilding it with divs would forfeit all of that. Only the paint is
+ * custom; the thumb is sized to the 44px hit-target figure from
+ * accessibility.md's Mobility table rather than the 28px floor.
+ */
+.scrubGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+  padding-top: var(--ob-space-4);
+  border-top: 1px solid var(--ob-hairline);
+}
+
+.scrubHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ob-space-3);
+}
+
+.scrubLabel {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.scrubPosition {
+  color: var(--ob-label-secondary);
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-footnote);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  white-space: nowrap;
+}
+
+.scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  /* The control's own box is the full hit target even though the visible
+     track is 4px; accessibility.md, "Offer sufficiently sized controls." */
+  height: var(--ob-hit-min);
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.scrub::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border-radius: var(--ob-radius-pill);
+  background: var(--ob-surface-raised);
+  border: 1px solid var(--ob-hairline);
+}
+
+.scrub::-moz-range-track {
+  height: 0.25rem;
+  border-radius: var(--ob-radius-pill);
+  background: var(--ob-surface-raised);
+  border: 1px solid var(--ob-hairline);
+}
+
+.scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  /* Centres a 20px thumb on a 4px track: (4 + 2 border - 20) / 2. */
+  margin-top: -0.4375rem;
+  border-radius: 50%;
+  background: var(--ob-accent-fill);
+  border: 2px solid var(--ob-surface);
+  box-shadow: var(--ob-shadow);
+}
+
+.scrub::-moz-range-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--ob-accent-fill);
+  border: 2px solid var(--ob-surface);
+  box-shadow: var(--ob-shadow);
+}
+
+/* The ring goes on the control, not on the thumb's own pseudo-element: only
+ * the former is reliably drawn across engines. */
+.scrub:focus-visible {
+  outline: 2px solid var(--ob-focus);
+  outline-offset: 2px;
+  border-radius: var(--ob-radius-sm);
+}
+
+.hint {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-footnote);
+}
+
+@media (max-width: 34rem) {
+  .panel {
+    padding: var(--ob-space-4);
+  }
+
+  .readout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .statusCell {
+    align-items: flex-start;
+  }
+}

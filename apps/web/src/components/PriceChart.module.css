@@ -1,0 +1,82 @@
+/* The other half of the instrument panel. Same numeric face, same accent,
+ * same card as PriceLadder -- see that file's header for the guideline.
+ *
+ * charting-data.md: "Keep a chart simple, letting people choose when they
+ * want additional details", and "Aid comprehension by adding descriptive text
+ * to the chart. Descriptive text titles, subtitles, and annotations help
+ * emphasize the most important information." So: no gridlines, no axis
+ * furniture, no tick labels. One line, and an HTML caption row that says in
+ * words what the line covers and what its endpoints are.
+ */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+  min-width: 0;
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ob-space-3);
+}
+
+.captionTitle {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.range {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  color: var(--ob-label-secondary);
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-footnote);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-variant-ligatures: none;
+  white-space: nowrap;
+}
+
+.rangeArrow {
+  color: var(--ob-label-tertiary);
+}
+
+.rangeNow {
+  color: var(--ob-label);
+  font-weight: var(--ob-weight-medium);
+}
+
+/* The plot. `aspect-ratio` plus a width-driven box means the reserved space is
+ * known before any script runs, so the canvas cannot cause layout shift on
+ * load -- and the canvas element itself keeps its intrinsic width/height
+ * attributes for the same reason. The gradient reads as the plot floor and
+ * gives the single line something to sit on without adding chart furniture. */
+.plot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 5;
+  min-height: 5.5rem;
+  border-radius: var(--ob-radius-md);
+  background:
+    linear-gradient(
+      to top,
+      var(--ob-chart-area-top),
+      var(--ob-chart-area-bottom) 72%
+    ),
+    var(--ob-surface-raised);
+  border: 1px solid var(--ob-hairline);
+  overflow: hidden;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

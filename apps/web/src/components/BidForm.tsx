@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { RejectReason } from "@openbid/protocol";
+import styles from "./BidForm.module.css";
 
 const REJECT_COPY: Record<RejectReason, string> = {
   TOO_LOW: "You were outbid — the price moved while you were typing.",
@@ -58,21 +59,61 @@ export function BidForm(props: {
     // runs -- replacing our specific, tested error copy with a generic
     // native tooltip. `min` stays on the input for assistive tech / spinner
     // semantics; the actual validation is this component's own.
-    <form onSubmit={submit} noValidate>
-      <label htmlFor="bid">Your bid</label>
-      <input
-        id="bid"
-        type="number"
-        inputMode="decimal"
-        value={value}
-        min={props.minimum}
-        onChange={(e) => setValue(e.target.value)}
-        disabled={props.disabled}
-      />
-      <button type="submit" disabled={props.disabled}>
-        Place bid
-      </button>
-      {message ? <p role="alert">{message}</p> : null}
+    <form onSubmit={submit} noValidate className={styles.form}>
+      <label htmlFor="bid" className={styles.label}>
+        Your bid
+      </label>
+      <div className={styles.row}>
+        <div className={styles.field}>
+          <input
+            id="bid"
+            type="number"
+            inputMode="decimal"
+            value={value}
+            min={props.minimum}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={props.disabled}
+            className={styles.input}
+            /* Only the LOCAL check marks the field invalid. A server
+               rejection is a statement about a bid that has already been
+               sent, not about what the field currently holds -- the price
+               moved underneath it -- so flagging the field for that would
+               point at the wrong thing. */
+            aria-invalid={localError === null ? undefined : true}
+          />
+        </div>
+        <button type="submit" disabled={props.disabled} className={styles.submit}>
+          Place bid
+        </button>
+      </div>
+      <p className={styles.hint}>
+        Minimum <span className={styles.hintValue}>{props.minimum}</span>
+      </p>
+      {/* The <p role="alert"> keeps EXACTLY its original text and nothing
+          else; the icon is a sibling, not a child. See BidForm.module.css's
+          note on the end-to-end spec that compares this text by exact
+          equality. */}
+      {message ? (
+        <div className={styles.alert}>
+          <svg
+            className={styles.alertIcon}
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.2" />
+            <circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" strokeWidth="1.4" />
+            <path
+              d="M10 5.6v5.6"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+            <circle cx="10" cy="14.3" r="1.05" fill="currentColor" />
+          </svg>
+          <p role="alert" className={styles.alertText}>{message}</p>
+        </div>
+      ) : null}
     </form>
   );
 }

@@ -1,4 +1,5 @@
 import type { ConnStatus } from "@/lib/socket";
+import styles from "./ConnectionBanner.module.css";
 
 const MESSAGES: Record<ConnStatus, string | null> = {
   connecting: "Connecting…",
@@ -7,8 +8,20 @@ const MESSAGES: Record<ConnStatus, string | null> = {
   closed: "Disconnected.",
 };
 
+const TONE: Record<ConnStatus, string> = {
+  connecting: styles.connecting,
+  open: "",
+  reconnecting: styles.reconnecting,
+  closed: styles.closed,
+};
+
 export function ConnectionBanner({ status }: { status: ConnStatus }) {
   const message = MESSAGES[status];
   if (message === null) return null;
-  return <p role="status">{message}</p>;
+  return (
+    <p role="status" className={`${styles.banner} ${TONE[status]}`}>
+      <span className={styles.dot} aria-hidden="true" />
+      {message}
+    </p>
+  );
 }

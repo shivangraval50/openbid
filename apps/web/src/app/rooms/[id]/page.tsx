@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { resolveIdentity } from "@/identity";
 import { fetchSnapshot } from "@/lib/rooms";
 import { LiveRoom } from "./LiveRoom";
+import styles from "./room.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +18,16 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
   const identity = await resolveIdentity();
 
   return (
-    <main>
+    // The room's own layout lives in LiveRoom, which renders the header (lot
+    // name plus connection pill), the instrument panel and the bid panel as
+    // this <main>'s three flex children. The heading text is passed down
+    // rather than rendered here so that the lot name and the connection
+    // status can share one row -- and so that the heading survives even on
+    // LiveRoom's `server === null` fallback branch.
+    <main className={styles.room}>
       {/* First paint shows real auction state, before any socket opens. */}
-      <h1>{snapshot.state.config.itemName}</h1>
       <LiveRoom
+        itemName={snapshot.state.config.itemName}
         roomId={id}
         initialSeq={snapshot.seq}
         initialServerTime={snapshot.serverTime}

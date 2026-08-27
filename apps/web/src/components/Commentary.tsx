@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import styles from "./Commentary.module.css";
 
 /**
  * Post-settlement auction commentary, fetched from `/api/bot` once the
@@ -85,7 +86,7 @@ export function Commentary(props: {
 
   if (text === "") return null;
   return (
-    <p data-testid="commentary" aria-label="Auction commentary">
+    <p className={styles.commentary} data-testid="commentary" aria-label="Auction commentary">
       {text}
     </p>
   );

@@ -125,3 +125,39 @@ describe("BidForm", () => {
     expect(screen.getByLabelText(/your bid/i)).toHaveValue(null);
   });
 });
+
+// Guards a contract that lives in another suite: e2e/simultaneous-bid.spec.ts
+// tells "the DO adjudicated this pair and rejected one" apart from "one client
+// independently guessed it would lose and never asked" by comparing this
+// element's text to the server copy with EXACT string equality (via
+// `allTextContents()`, which does not normalise whitespace). A decorative
+// glyph, an icon character, or a stray space inside the <p role="alert">
+// would silently make that e2e assertion unsatisfiable, and nothing in this
+// unit suite's `toHaveTextContent` substring checks would notice.
+describe("BidForm rejection alert text", () => {
+  const SERVER_REJECT_TEXT = "You were outbid — the price moved while you were typing.";
+
+  it("renders the server's rejection copy as the alert's entire text content", () => {
+    render(<BidForm minimum={100} disabled={false} rejectReason="TOO_LOW" onBid={() => {}} />);
+    expect(screen.getByRole("alert").textContent).toBe(SERVER_REJECT_TEXT);
+  });
+
+  it("renders the local minimum-check copy as the alert's entire text content", async () => {
+    render(<BidForm minimum={100} disabled={false} rejectReason={null} onBid={() => {}} />);
+    const input = screen.getByLabelText(/your bid/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, "5");
+    await userEvent.click(screen.getByRole("button", { name: /place bid/i }));
+    expect(screen.getByRole("alert").textContent).toBe("Bid must be at least 100.");
+  });
+
+  // The alert must live inside the <form>: the e2e helper scopes to
+  // `form p[role="alert"]` precisely because Next's App Router injects its own
+  // offscreen route announcer, which is also role="alert", on every page.
+  it("keeps the alert inside the form element", () => {
+    const { container } = render(
+      <BidForm minimum={100} disabled={false} rejectReason="TOO_LOW" onBid={() => {}} />
+    );
+    expect(container.querySelector('form p[role="alert"]')).not.toBeNull();
+  });
+});
