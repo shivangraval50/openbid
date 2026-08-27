@@ -54,9 +54,23 @@ const COMMENTARY_SYSTEM =
 // unaffected by the higher cap -- it stops at end-of-turn either way.
 const COMMENTARY_MAX_TOKENS = 512;
 
+/**
+ * A discriminated union, not `{itemName, winner: string | null, price:
+ * number | null}` with independent nulls -- that shape is type-legal for
+ * `winner: "ada", price: null` or `winner: null, price: 500`, neither of
+ * which is a real auction outcome, and the second would have embedded the
+ * literal text "null" into the prompt. Killing the invalid combination at
+ * the type level means every caller of `botCommentary`, not just the one
+ * route that happens to validate its input today, is structurally unable
+ * to construct it.
+ */
+export type AuctionOutcome =
+  | { itemName: string; winner: string; price: number }
+  | { itemName: string; winner: null; price: null };
+
 export async function botCommentary(
   provider: LlmProvider,
-  opts: { itemName: string; winner: string | null; price: number | null }
+  opts: AuctionOutcome
 ): Promise<string> {
   const prompt =
     opts.winner === null

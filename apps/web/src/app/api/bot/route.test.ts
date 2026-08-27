@@ -7,10 +7,22 @@ vi.mock("@openbid/llm", () => ({ selectProvider, botCommentary }));
 
 const { POST } = await import("./route");
 
-function postRequest(body: unknown): Request {
+/** `ip` defaults to a value unique-enough per call site to avoid one
+ * test's requests exhausting another's rate-limit budget -- the limiter
+ * is a module-level singleton shared across every test in this file. */
+function postRequest(body: unknown, ip = "203.0.113.1"): Request {
   return new Request("http://localhost/api/bot", {
     method: "POST",
+    headers: { "x-forwarded-for": ip },
     body: JSON.stringify(body),
+  });
+}
+
+function rawRequest(rawBody: string, ip = "203.0.113.1"): Request {
+  return new Request("http://localhost/api/bot", {
+    method: "POST",
+    headers: { "x-forwarded-for": ip },
+    body: rawBody,
   });
 }
 
@@ -23,7 +35,7 @@ describe("POST /api/bot", () => {
     selectProvider.mockReturnValue({ name: "anthropic", complete: vi.fn() });
     botCommentary.mockResolvedValue("Sold to ada for 500.");
 
-    const res = await POST(postRequest({ itemName: "X", winner: "ada", price: 500 }));
+    const res = await POST(postRequest({ itemName: "X", winner: "ada", price: 500 }, "203.0.113.10"));
 
     expect(res.status).toBe(200);
     const json = (await res.json()) as { text: string; provider: string };
@@ -40,22 +52,19 @@ describe("POST /api/bot", () => {
       throw new Error("no LLM provider configured: set ANTHROPIC_API_KEY or GEMINI_API_KEY");
     });
 
-    const res = await POST(postRequest({ itemName: "X", winner: "ada", price: 500 }));
+    const res = await POST(postRequest({ itemName: "X", winner: "ada", price: 500 }, "203.0.113.11"));
 
     expect(res.status).toBe(200);
     const json = (await res.json()) as { text: string; provider: string | null; error?: string };
     expect(json.text).toBe("");
     expect(json.provider).toBeNull();
-    expect(json.error).toContain("no LLM provider configured");
   });
 
   it("degrades to a 200 with empty text when the provider call itself fails (e.g. a malformed response)", async () => {
     selectProvider.mockReturnValue({ name: "gemini", complete: vi.fn() });
-    botCommentary.mockRejectedValue(
-      new Error("gemini response did not match the expected shape")
-    );
+    botCommentary.mockRejectedValue(new Error("gemini response did not match the expected shape"));
 
-    const res = await POST(postRequest({ itemName: "X", winner: "ada", price: 500 }));
+    const res = await POST(postRequest({ itemName: "X", winner: "ada", price: 500 }, "203.0.113.12"));
 
     expect(res.status).toBe(200);
     const json = (await res.json()) as { text: string; provider: string | null };
@@ -63,17 +72,145 @@ describe("POST /api/bot", () => {
     expect(json.provider).toBeNull();
   });
 
-  it("degrades to a 200 with empty text when the request body itself is malformed JSON", async () => {
-    const badRequest = new Request("http://localhost/api/bot", {
-      method: "POST",
-      body: "not json",
+  // Important #1 (review round 1): a malformed request body is a CALLER
+  // error, not a provider failure -- it must be distinguishable (400),
+  // not silently absorbed into the same 200-with-empty-text path used for
+  // "the LLM had nothing to say." Also asserts the provider is never even
+  // reached, so this can't pass merely because a mocked provider degrades
+  // gracefully downstream.
+  describe("caller errors (must not be absorbed into the provider-failure 200 path)", () => {
+    it("returns 400 when the request body is not valid JSON at all", async () => {
+      const res = await POST(rawRequest("not json", "203.0.113.20"));
+
+      expect(res.status).toBe(400);
+      expect(selectProvider).not.toHaveBeenCalled();
+      expect(botCommentary).not.toHaveBeenCalled();
     });
 
-    const res = await POST(badRequest);
+    it("returns 400 when winner is set but price is null (a shape botCommentary's own type can no longer express)", async () => {
+      const res = await POST(postRequest({ itemName: "X", winner: "ada", price: null }, "203.0.113.21"));
 
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as { text: string; provider: string | null };
-    expect(json.text).toBe("");
-    expect(json.provider).toBeNull();
+      expect(res.status).toBe(400);
+      expect(botCommentary).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when winner is null but price is set", async () => {
+      const res = await POST(postRequest({ itemName: "X", winner: null, price: 500 }, "203.0.113.22"));
+
+      expect(res.status).toBe(400);
+      expect(botCommentary).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when itemName is missing", async () => {
+      const res = await POST(postRequest({ winner: "ada", price: 500 }, "203.0.113.23"));
+
+      expect(res.status).toBe(400);
+      expect(botCommentary).not.toHaveBeenCalled();
+    });
+
+    // Requirement 2's discipline, applied to the request side: a wrong-
+    // shaped body must not silently embed the literal string "undefined"
+    // into a prompt paid for per token. itemName over the room-creation
+    // form's own 80-char cap (apps/web/src/app/page.tsx) is exactly the
+    // kind of oversized value that would otherwise ride straight into the
+    // prompt uncapped.
+    it("returns 400 when itemName exceeds the 80-character bound enforced elsewhere in this app", async () => {
+      const res = await POST(
+        postRequest({ itemName: "x".repeat(81), winner: "ada", price: 500 }, "203.0.113.24")
+      );
+
+      expect(res.status).toBe(400);
+      expect(botCommentary).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when winner exceeds NICKNAME_MAX_LENGTH (32)", async () => {
+      const res = await POST(
+        postRequest({ itemName: "X", winner: "a".repeat(33), price: 500 }, "203.0.113.25")
+      );
+
+      expect(res.status).toBe(400);
+      expect(botCommentary).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when price is not finite (e.g. Infinity smuggled through as a number)", async () => {
+      const res = await POST(
+        postRequest({ itemName: "X", winner: "ada", price: Number.POSITIVE_INFINITY }, "203.0.113.26")
+      );
+
+      expect(res.status).toBe(400);
+      expect(botCommentary).not.toHaveBeenCalled();
+    });
+  });
+
+  // Important #1: the endpoint spends real API budget per request, so it
+  // must be throttled per caller. Capacity is exercised directly rather
+  // than mocked, so this proves the real limiter is wired into the route,
+  // not merely that a fake would return false.
+  describe("rate limiting", () => {
+    it("rejects a caller's request once it exceeds the per-IP budget, before ever selecting a provider", async () => {
+      selectProvider.mockReturnValue({ name: "anthropic", complete: vi.fn() });
+      botCommentary.mockResolvedValue("commentary");
+      const ip = "203.0.113.30";
+      const body = { itemName: "X", winner: "ada", price: 500 };
+
+      // The limiter's capacity is 5 (see route.ts) -- five requests must
+      // succeed, and the sixth in the same window must not.
+      for (let i = 0; i < 5; i++) {
+        const res = await POST(postRequest(body, ip));
+        expect(res.status).toBe(200);
+      }
+
+      const limited = await POST(postRequest(body, ip));
+      expect(limited.status).toBe(429);
+
+      // The 6th call must be rejected before spending an LLM call -- the
+      // mock call count should still be 5, not 6.
+      expect(botCommentary).toHaveBeenCalledTimes(5);
+    });
+
+    it("does not rate-limit one caller based on another caller's usage", async () => {
+      selectProvider.mockReturnValue({ name: "anthropic", complete: vi.fn() });
+      botCommentary.mockResolvedValue("commentary");
+      const body = { itemName: "X", winner: "ada", price: 500 };
+
+      for (let i = 0; i < 5; i++) {
+        await POST(postRequest(body, "203.0.113.40"));
+      }
+      // A fresh IP must still get its own full budget.
+      const res = await POST(postRequest(body, "203.0.113.41"));
+      expect(res.status).toBe(200);
+    });
+  });
+
+  // Minor 1 (review round 1): the raw error must never reach the client
+  // verbatim -- today nothing in the reachable throw sites embeds a key,
+  // but the invariant should not rest on every future error message
+  // continuing to avoid that. The detail goes to server-side logs instead.
+  describe("error detail does not reach the client", () => {
+    it("returns a fixed, generic error string on provider failure -- never the raw error text", async () => {
+      selectProvider.mockReturnValue({ name: "gemini", complete: vi.fn() });
+      const secretLookingDetail = "gemini request failed: 401 (key sk-live-abc123 rejected)";
+      botCommentary.mockRejectedValue(new Error(secretLookingDetail));
+
+      const res = await POST(postRequest({ itemName: "X", winner: "ada", price: 500 }, "203.0.113.50"));
+      const json = (await res.json()) as { error?: string };
+
+      expect(json.error).not.toContain(secretLookingDetail);
+      expect(json.error).not.toContain("sk-live-abc123");
+    });
+
+    it("logs the failure detail server-side via console.error", async () => {
+      const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      selectProvider.mockReturnValue({ name: "gemini", complete: vi.fn() });
+      botCommentary.mockRejectedValue(new Error("some provider-side detail"));
+
+      await POST(postRequest({ itemName: "X", winner: "ada", price: 500 }, "203.0.113.51"));
+
+      expect(logSpy).toHaveBeenCalled();
+      const logged = logSpy.mock.calls.flat().map(String).join(" ");
+      expect(logged).toContain("some provider-side detail");
+
+      logSpy.mockRestore();
+    });
   });
 });
