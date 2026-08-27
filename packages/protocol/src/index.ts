@@ -108,10 +108,23 @@ export type AuctionEvent = z.infer<typeof auctionEventSchema>;
 // system into the app, gated the same way as the schemas above, with
 // `bidLog` validated element-by-element via `auctionEventSchema` rather
 // than trusted as `unknown[]` -- see that schema's comment for why.
+//
+// `startingPrice`/`winningPrice` use `z.coerce.number()`, not plain
+// `z.number()`, because `starting_price`/`winning_price` are `NUMERIC` in
+// `packages/room-do/schema.sql`, and Neon's serverless driver returns
+// `NUMERIC`/`DECIMAL` columns as JS strings by default (avoiding silent
+// float-precision loss on arbitrary-precision values) -- there is no
+// column-level way to make it hand back a JS number instead. The read
+// query in `apps/web/src/lib/replay.ts` also casts both columns with
+// `::float`, matching `leaderboard.ts`'s existing precedent on this same
+// table, but the coercion here is the layer that survives someone later
+// removing that cast. `.finite()` still rejects genuine garbage: coercing
+// a non-numeric string (e.g. `"abc"`) produces `NaN`, which `.finite()`
+// rejects same as it always did.
 export const archivedAuctionSchema = z.object({
   itemName: z.string().min(1),
-  startingPrice: z.number().finite(),
-  winningPrice: z.number().finite().nullable(),
+  startingPrice: z.coerce.number().finite(),
+  winningPrice: z.coerce.number().finite().nullable(),
   winnerNickname: z.string().min(1).nullable(),
   bidLog: z.array(auctionEventSchema),
 });

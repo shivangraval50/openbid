@@ -62,12 +62,17 @@ export async function fetchArchivedAuction(roomId: string): Promise<ArchivedAuct
 
   try {
     const sql = neon(url);
+    // starting_price/winning_price are NUMERIC (schema.sql); cast to
+    // float here, matching leaderboard.ts's existing precedent on this
+    // same table, so the common case hands archivedAuctionSchema an
+    // actual number rather than relying solely on its z.coerce.number()
+    // fallback (see that schema's comment for why both layers exist).
     const rows = await sql`
-      SELECT item_name       AS "itemName",
-             starting_price  AS "startingPrice",
-             winning_price   AS "winningPrice",
-             winner_nickname AS "winnerNickname",
-             bid_log         AS "bidLog"
+      SELECT item_name              AS "itemName",
+             starting_price::float  AS "startingPrice",
+             winning_price::float   AS "winningPrice",
+             winner_nickname        AS "winnerNickname",
+             bid_log                AS "bidLog"
       FROM completed_auctions
       WHERE room_id = ${roomId}
       LIMIT 1

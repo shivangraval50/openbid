@@ -242,4 +242,47 @@ describe("archivedAuctionSchema", () => {
     const { itemName, ...rest } = valid;
     expect(() => archivedAuctionSchema.parse(rest)).toThrow(ZodError);
   });
+
+  // The Critical from review: `starting_price`/`winning_price` are
+  // `NUMERIC` in schema.sql, and Neon's serverless driver returns
+  // `NUMERIC`/`DECIMAL` columns as JS strings by default -- so a GENUINE
+  // archived row looks exactly like this, not like `valid` above (which
+  // uses number literals only because it's hand-written). A schema using
+  // plain `z.number()` for these fields rejects every real row, and
+  // `fetchArchivedAuction`'s catch turns that into `null` -- every
+  // completed auction 404s on replay, silently, with all-green tests,
+  // because the mock never simulated the driver's real coercion. This is
+  // the test that actually exercises that shape.
+  it("accepts starting/winning price as the strings Neon's driver returns for NUMERIC columns", () => {
+    const numericAsStrings = { ...valid, startingPrice: "100", winningPrice: "400" };
+    expect(archivedAuctionSchema.parse(numericAsStrings)).toEqual(valid);
+  });
+
+  it("accepts a null winningPrice alongside a string startingPrice", () => {
+    const numericAsStrings = {
+      ...valid,
+      startingPrice: "100",
+      winningPrice: null,
+      winnerNickname: null,
+      bidLog: [],
+    };
+    expect(archivedAuctionSchema.parse(numericAsStrings)).toEqual({
+      ...valid,
+      startingPrice: 100,
+      winningPrice: null,
+      winnerNickname: null,
+      bidLog: [],
+    });
+  });
+
+  // Coercion must not become an open door: a NUMERIC column that somehow
+  // held non-numeric text coerces to `NaN`, which `.finite()` still
+  // rejects, exactly as plain `z.number()` rejected a literal string
+  // before this fix. Without this test, replacing `.finite()` with
+  // nothing (accepting any coercion result including `NaN`) would pass
+  // every other test in this file.
+  it("still rejects a starting price that coerces to NaN", () => {
+    const garbage = { ...valid, startingPrice: "not-a-number" };
+    expect(() => archivedAuctionSchema.parse(garbage)).toThrow(ZodError);
+  });
 });

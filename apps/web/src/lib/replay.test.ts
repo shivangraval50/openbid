@@ -26,7 +26,10 @@ const config: AuctionConfig = {
 };
 
 /** Play a scripted auction and capture the log the DO would have archived. */
-function recordAuction(): { log: AuctionEvent[]; finalPrice: number | null } {
+function recordAuction(): {
+  log: AuctionEvent[];
+  finalWinner: { participantId: string; amount: number } | null;
+} {
   let state = initialState(config);
   const log: AuctionEvent[] = [];
 
@@ -52,11 +55,11 @@ function recordAuction(): { log: AuctionEvent[]; finalPrice: number | null } {
   log.push(close);
   state = reduce(state, close);
 
-  return { log, finalPrice: state.winner?.amount ?? null };
+  return { log, finalWinner: state.winner };
 }
 
 describe("replayTo", () => {
-  // The determinism test. `finalPrice` comes from `state` as built by
+  // The determinism test. `finalWinner` comes from `state` as built by
   // recordAuction's OWN fold loop above -- the real decide-then-apply
   // path (`validateBid` decides, `reduce` applies, `closeAuction` decides
   // the close) -- not from calling `replayTo` a second time. `replayTo`
@@ -65,10 +68,17 @@ describe("replayTo", () => {
   // `validateBid`. A `replayTo` that folded the wrong slice of events, or
   // started from the wrong initial state, would diverge from that
   // independently-produced settlement and fail here.
+  //
+  // Asserts the WHOLE winner object, not just `.amount`: comparing only
+  // the amount would pass even if replay attached the right price to the
+  // wrong participant (e.g. a reduce/replay bug that mixed up bidders),
+  // since two different bids in this script never land on the same
+  // amount by coincidence but could plausibly share a winning figure in
+  // general. `participantId` is part of "the recorded settlement" too.
   it("reproduces the recorded settlement from the archived log", () => {
-    const { log, finalPrice } = recordAuction();
+    const { log, finalWinner } = recordAuction();
     const replayed = replayTo(config, log, log.length);
-    expect(replayed.winner?.amount ?? null).toBe(finalPrice);
+    expect(replayed.winner).toEqual(finalWinner);
     expect(replayed.status).toBe("closed");
   });
 
@@ -168,6 +178,43 @@ describe("fetchArchivedAuction", () => {
     sql.mockResolvedValue([validRow]);
 
     await expect(fetchArchivedAuction("room-1")).resolves.toEqual(validRow);
+  });
+
+  // The Critical from review: `starting_price`/`winning_price` are
+  // NUMERIC columns (schema.sql), and Neon's serverless driver returns
+  // NUMERIC/DECIMAL as JS strings by default -- so a genuine row looks
+  // like THIS, not like `validRow` above (whose number literals only
+  // happen to look right because they're hand-written). Every prior test
+  // in this file mocked `sql` with JS number literals, so all 32 tests
+  // from the first pass could go green while every real replay 404'd.
+  // This is the test that actually simulates the driver's real
+  // coercion, and it must resolve to the *numeric* archived auction, not
+  // null and not the raw strings.
+  it("accepts and numerically coerces starting/winning price when Neon returns them as strings", async () => {
+    process.env.DATABASE_URL = "postgres://example/db";
+    sql.mockResolvedValue([{ ...validRow, startingPrice: "100", winningPrice: "400" }]);
+
+    const result = await fetchArchivedAuction("room-1");
+
+    expect(result).toEqual(validRow);
+    expect(result?.startingPrice).toBe(100);
+    expect(typeof result?.startingPrice).toBe("number");
+    expect(result?.winningPrice).toBe(400);
+    expect(typeof result?.winningPrice).toBe("number");
+  });
+
+  // Same shape, the "never sold" case: a null winning_price must survive
+  // alongside a string-valued starting_price.
+  it("accepts a null winningPrice alongside a string-valued startingPrice", async () => {
+    process.env.DATABASE_URL = "postgres://example/db";
+    sql.mockResolvedValue([
+      { ...validRow, startingPrice: "100", winningPrice: null, winnerNickname: null },
+    ]);
+
+    const result = await fetchArchivedAuction("room-1");
+
+    expect(result?.startingPrice).toBe(100);
+    expect(result?.winningPrice).toBeNull();
   });
 
   // The requirement beyond the brief: the one input capable of making
