@@ -9,11 +9,13 @@
     "start": "next start"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@openbid/auction-core": "*",
     "@openbid/charts": "*",
     "@openbid/protocol": "*",
     "@openbid/store": "*",
     "next": "^16.3.3",
+    "next-auth": "^5.0.0-beta.32",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.15"

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { resolveIdentity } from "@/identity";
 import { fetchSnapshot } from "@/lib/rooms";
 import { LiveRoom } from "./LiveRoom";
 
@@ -8,6 +9,12 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const snapshot = await fetchSnapshot(id);
   if (snapshot === null) notFound();
+
+  // Resolves signed-in session first, then the guest cookie (generating
+  // one if absent) -- see identity.ts. Every participant connecting as
+  // "guest" (LiveRoom's fallback default) was a wiring gap, not a design
+  // choice: this is what closes it.
+  const identity = await resolveIdentity();
 
   return (
     <main>
@@ -19,6 +26,7 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
         initialServerTime={snapshot.serverTime}
         initialState={snapshot.state}
         socketBaseUrl={process.env.NEXT_PUBLIC_ROOMS_BASE_URL ?? ""}
+        nickname={identity.nickname}
       />
     </main>
   );
