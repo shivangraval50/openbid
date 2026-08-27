@@ -48,4 +48,16 @@ describe("Latency", () => {
     render(<Latency offsetMs={1_500} />);
     expect(screen.getByTestId("latency")).toHaveTextContent(/1500\s*ms/);
   });
+
+  // The hydration-mismatch fix (task-17 review): `offsetMs` is `null`
+  // until a real round trip has measured one. This must render a static
+  // placeholder, not fall back to `describeSkew(0)` -- "clock synced"
+  // would be a fabricated claim (nothing has been measured), not a
+  // rendering of the actual (unknown, so far) state.
+  it("renders a neutral placeholder while no offset has been measured yet", () => {
+    render(<Latency offsetMs={null} />);
+    const text = screen.getByTestId("latency").textContent ?? "";
+    expect(text).not.toMatch(/synced/i);
+    expect(text).not.toMatch(/\d/);
+  });
 });

@@ -37,4 +37,12 @@ jobs:
         if: failure()
         with:
           name: playwright-report
-          path: apps/web/playwright-report
+          # The HTML report (now actually produced -- see the "html"
+          # reporter in playwright.config.ts) plus test-results/, which is
+          # where `trace: "retain-on-failure"` writes its per-test trace
+          # .zip files; the report alone links to traces at that path, so
+          # uploading only one half leaves the report's own trace links
+          # dead.
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results

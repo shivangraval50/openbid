@@ -13,7 +13,38 @@ export interface AuctionStoreState {
   lastSeenSeq: number;
   pending: PendingBid[];
   lastReject: { clientSeq: number; reason: RejectReason } | null;
-  clockOffsetMs: number;
+  // The REAL, measured clock offset. `null` means "no real round trip has
+  // been measured yet." Only `observeClock` (a genuine send/receive round
+  // trip) may set this to a number; `seedFromSnapshot` deliberately leaves
+  // it alone. This used to be derived provisionally from `serverTime -
+  // Date.now()` at seed time, but that computation reads the local clock at
+  // a different real moment on the server (during SSR) than on the client
+  // (during hydration) -- the two calls are separated by whatever the real
+  // SSR-to-hydration latency happens to be. `Latency` displays this value
+  // raw (that is its whole purpose), so it was rendering that latency
+  // mislabelled as clock skew, differently on each render -- a genuine
+  // hydration mismatch whenever that latency crossed its threshold. A pong
+  // cannot arrive before mount, so SSR and the first client render now
+  // necessarily agree: both see `null`, and `Latency` renders a static
+  // placeholder for that case instead of a fabricated number.
+  clockOffsetMs: number | null;
+  // A SEPARATE provisional anchor, used only by `selectServerNow` (i.e. by
+  // `Countdown`/`PriceChart`'s numeric timing math), never displayed raw.
+  // This is exactly the old `clockOffsetMs` seed-time computation, kept
+  // here instead of removed outright: for a *numeric* correction that gets
+  // added back to a fresh `Date.now()` in the same synchronous render pass
+  // that seeded it, the SSR-vs-hydration timing difference cancels out
+  // algebraically (`selectServerNow`'s doc comment works through this), so
+  // it is provably safe from the same hydration-mismatch class that made
+  // `clockOffsetMs` unsafe to use for *display*. Removing it entirely (as
+  // opposed to just not exposing it as `clockOffsetMs`) would have traded
+  // the fixed `Latency` mismatch for an equivalent, newly-introduced one in
+  // `Countdown` -- confirmed by actually deleting it and rerunning this
+  // suite: `Countdown` started hydration-mismatching too, e.g. "2:58" vs
+  // "2:59", the two renders' bare `Date.now()` calls now genuinely seconds
+  // apart with nothing anchoring them together. Superseded by the real
+  // `clockOffsetMs` once one exists (see `selectServerNow`).
+  provisionalOffsetMs: number;
   nextClientSeq: number;
 
   applyServerMessage: (msg: ServerMessage) => void;
@@ -31,7 +62,8 @@ export function createAuctionStore(): AuctionStore {
     lastSeenSeq: 0,
     pending: [],
     lastReject: null,
-    clockOffsetMs: 0,
+    clockOffsetMs: null,
+    provisionalOffsetMs: 0,
     nextClientSeq: 1,
 
     applyServerMessage: (msg) => {
@@ -129,13 +161,13 @@ export function createAuctionStore(): AuctionStore {
     // brand-new store is never blocked: `server` is still `null` then,
     // regardless of what `seq` is.
     //
-    // Also derives a provisional `clockOffsetMs` from `serverTime` (the
-    // seeded snapshot's server-reported time). This is intentionally rough
-    // -- unlike `observeClock`, there is no round trip to correct for here,
-    // since the SSR fetch never told the server anything the client can
-    // measure a receipt time against -- but it is strictly better than the
-    // `0` (i.e. "trust the local clock") default, and closes most of the
-    // window before the socket's first real pong lands.
+    // Deliberately does NOT touch the real, measured `clockOffsetMs` --
+    // only `observeClock` may set that one, and only from an actual round
+    // trip. It DOES seed `provisionalOffsetMs` from `serverTime -
+    // Date.now()`, same as `clockOffsetMs` itself used to: see that
+    // field's doc comment for why this specific computation is safe here
+    // (numeric use, same synchronous render pass) even though it would not
+    // have been safe to display raw.
     seedFromSnapshot: (seq, serverTime, state) => {
       const current = get();
       if (current.server !== null && seq <= current.lastSeenSeq) return;
@@ -143,7 +175,7 @@ export function createAuctionStore(): AuctionStore {
         server: state,
         lastSeenSeq: seq,
         pending: [],
-        clockOffsetMs: serverTime - Date.now(),
+        provisionalOffsetMs: serverTime - Date.now(),
       });
     },
 
@@ -185,9 +217,25 @@ export function selectPendingCount(s: AuctionStoreState): number {
 /**
  * Server-corrected wall clock. Client code must never call `Date.now()`
  * directly for auction timing -- countdowns render against this instead.
+ *
+ * Prefers the real, measured `clockOffsetMs` once one exists; falls back to
+ * `provisionalOffsetMs` (seeded from the SSR snapshot's `serverTime`) until
+ * then. That fallback is what keeps `Countdown`/`PriceChart` hydration
+ * -consistent: `provisionalOffsetMs = serverTime - Date.now()` and this
+ * read (`Date.now() + provisionalOffsetMs`) both happen within the same
+ * synchronous render, on both the server render and the client's hydration
+ * render, so the two `Date.now()` calls are microseconds apart and the
+ * result reduces to `serverTime` either way -- the real SSR-to-hydration
+ * latency cancels out of the *sum*, even though it would not cancel out of
+ * `provisionalOffsetMs` read in isolation (which is exactly why `Latency`
+ * must never display `provisionalOffsetMs`, only the real `clockOffsetMs`).
+ * The window before either offset exists (a brand-new store, no seed and
+ * no pong yet) falls back further to bare `Date.now()` (offset 0); that
+ * window is intentionally short in practice since `connectRoom` pings
+ * immediately on open rather than waiting for its 5s interval.
  */
 export function selectServerNow(s: AuctionStoreState): number {
-  return Date.now() + s.clockOffsetMs;
+  return Date.now() + (s.clockOffsetMs ?? s.provisionalOffsetMs);
 }
 
 export function selectMsRemaining(s: AuctionStoreState): number {

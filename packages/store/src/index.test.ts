@@ -140,20 +140,57 @@ describe("seedFromSnapshot", () => {
     expect(store.getState().lastSeenSeq).toBe(0);
   });
 
-  // Catches: leaving the client on its own untrusted clock for the entire
-  // window between first paint and the first real pong. `serverTime` was
-  // previously accepted as a parameter and silently discarded; it must now
-  // seed a provisional `clockOffsetMs` so the very first countdown render
-  // is already server-corrected, not exactly 0 (the "trust local clock"
-  // default) purely by coincidence of timing.
-  it("derives a provisional clock offset from the seeded serverTime", () => {
+  // Catches: reintroducing the old "provisional offset" behaviour (deriving
+  // `clockOffsetMs` from `serverTime - Date.now()` at seed time). That
+  // computation read the local clock at a different real moment on the
+  // server (SSR) than on the client (hydration) -- the difference is
+  // exactly the SSR-to-hydration latency, not clock skew, and it hydration
+  // -mismatched `Latency` whenever that latency crossed its threshold (see
+  // task-17-report.md). `clockOffsetMs` must stay `null` until a real
+  // round trip (`observeClock`) measures one -- a pong cannot arrive before
+  // mount, so SSR and the first client render now necessarily agree.
+  it("leaves clockOffsetMs null -- does not derive a provisional offset from serverTime", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
     const store = createAuctionStore();
-    // The server reports a time 5s ahead of this (fake) local clock.
+    // The server reports a time 5s ahead of this (fake) local clock; that
+    // gap must NOT show up as clockOffsetMs.
     store.getState().seedFromSnapshot(4, 1_005_000, seededState());
-    expect(store.getState().clockOffsetMs).toBe(5_000);
+    expect(store.getState().clockOffsetMs).toBeNull();
     vi.useRealTimers();
+  });
+
+  // The other half of the fix: removing the provisional computation
+  // entirely (rather than keeping it under a different name for numeric
+  // use only) traded the fixed `Latency` mismatch for an equivalent one in
+  // `Countdown`/`PriceChart`, confirmed by actually doing that and
+  // rerunning the Playwright suite (see task-17-report.md). It must still
+  // land, just under `provisionalOffsetMs`, and only that field, not the
+  // real `clockOffsetMs`.
+  it("still derives a provisional offset from serverTime, but as provisionalOffsetMs, not clockOffsetMs", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(4, 1_005_000, seededState());
+    expect(store.getState().provisionalOffsetMs).toBe(5_000);
+    expect(store.getState().clockOffsetMs).toBeNull();
+    vi.useRealTimers();
+  });
+
+  // Catches: a seed that clobbers an already-measured real offset back to
+  // null (or to a fresh provisional guess) on a later re-seed (e.g. an SSR
+  // re-fetch via `router.refresh()` after the socket's own pong already
+  // corrected the clock). Once real, a measured offset must survive a
+  // reseed untouched.
+  it("does not clobber an already-measured clockOffsetMs on a later seed", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(4, 1_000, seededState());
+    store.getState().observeClock(1_000, 5_050, 1_100);
+    const measured = store.getState().clockOffsetMs;
+    expect(measured).not.toBeNull();
+
+    store.getState().seedFromSnapshot(9, 2_000, seededState());
+    expect(store.getState().clockOffsetMs).toBe(measured);
   });
 });
 
@@ -391,12 +428,54 @@ describe("selectServerNow", () => {
     const store = createAuctionStore();
     store.getState().observeClock(1_000, 5_050, 1_100);
     const offset = store.getState().clockOffsetMs;
+    // observeClock always sets a real number; a null here would mean this
+    // test's own premise (a measured offset exists) is broken, which is
+    // worth failing loudly on rather than silently coercing to 0.
+    expect(offset).not.toBeNull();
+    const measuredOffset = offset as number;
 
     const before = Date.now();
     const serverNow = selectServerNow(store.getState());
     const after = Date.now();
 
-    expect(serverNow).toBeGreaterThanOrEqual(before + offset);
-    expect(serverNow).toBeLessThanOrEqual(after + offset);
+    expect(serverNow).toBeGreaterThanOrEqual(before + measuredOffset);
+    expect(serverNow).toBeLessThanOrEqual(after + measuredOffset);
+  });
+
+  // Catches: falling back to bare Date.now() (offset 0) whenever no real
+  // measurement exists yet, ignoring provisionalOffsetMs entirely -- which
+  // is exactly the regression that made Countdown/PriceChart start
+  // hydration-mismatching once clockOffsetMs stopped being seeded (see the
+  // AuctionStoreState.provisionalOffsetMs doc comment).
+  it("falls back to the provisional offset before any real one has been measured", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(4, 1_005_000, seededState());
+    expect(store.getState().clockOffsetMs).toBeNull();
+
+    const serverNow = selectServerNow(store.getState());
+    expect(serverNow).toBe(1_005_000);
+    vi.useRealTimers();
+  });
+
+  // Catches: continuing to use the provisional (seed-time) offset forever,
+  // even after a real round trip has measured a more accurate one -- the
+  // whole point of `observeClock` correcting the clock is that it takes
+  // over from here.
+  it("prefers the real measured offset over the provisional one once both exist", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const store = createAuctionStore();
+    // Provisional offset would be +5_000 if used.
+    store.getState().seedFromSnapshot(4, 1_005_000, seededState());
+    // Real, measured offset: sent at 1_000_000, received at 1_000_100 (RTT
+    // 100), server said 1_100_050 -> serverTimeAtReceipt = 1_100_100,
+    // offset = 1_100_100 - 1_000_100 = 100_000.
+    store.getState().observeClock(1_000_000, 1_100_050, 1_000_100);
+
+    const serverNow = selectServerNow(store.getState());
+    expect(serverNow).toBe(1_000_000 + 100_000);
+    vi.useRealTimers();
   });
 });
