@@ -2,11 +2,14 @@ import { z } from "zod";
 
 export const PROTOCOL_VERSION = 1;
 
-// Shared with apps/web's identity.ts, which truncates a signed-in user's
-// display name (or a generated guest nickname) to this same limit before
-// ever sending a "hello" -- imported from here rather than duplicated as
-// a bare literal, so the client-side truncation and this wire-level cap
-// cannot silently drift apart.
+// Shared with apps/web's identity.ts, which truncates every nickname it
+// resolves -- a signed-in user's GitHub login, and the client-writable
+// `openbid_guest` cookie value -- to this same limit before it can ever
+// reach a "hello". Imported from here rather than duplicated as a bare
+// literal, so that truncation and this wire-level cap cannot silently
+// drift apart: if they did, an over-long nickname would fail the `hello`
+// schema below, `RoomDO` would close the socket with 1003, and the
+// client's own reconnect would resend it forever.
 export const NICKNAME_MAX_LENGTH = 32;
 
 export const rejectReasonSchema = z.enum([

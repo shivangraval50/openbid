@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { encode, parseClientMessage } from "@openbid/protocol";
 
 // Declared and mocked at true module top level (matching
 // src/actions/rooms.test.ts's convention) rather than inside a describe
@@ -135,6 +136,53 @@ describe("resolveIdentity", () => {
 
     expect(identity.nickname).toBe("a".repeat(31));
     expect(identity.nickname.length).toBeLessThanOrEqual(32);
+  });
+
+  // `openbid_guest` is set `httpOnly: false` (proxy.ts), so it is
+  // client-writable: anything in that cookie is untrusted input on exactly
+  // the same footing as a session display name. An over-long value fails
+  // `clientMessageSchema`'s `.max(NICKNAME_MAX_LENGTH)` on the `hello`,
+  // `RoomDO` closes the socket with 1003, and `connectRoom`'s `onclose`
+  // reconnects -- an infinite loop that leaves that browser permanently
+  // unable to use ANY room until the cookie is cleared by hand. The
+  // signed-in branch was already truncated; this branch returned the cookie
+  // value raw.
+  it("truncates an overly long guest cookie to the 32-character protocol limit", async () => {
+    auth.mockResolvedValue(null);
+    cookieStore.get.mockReturnValue({ value: "x".repeat(200) });
+
+    const identity = await resolveIdentity();
+
+    expect(identity.nickname.length).toBe(32);
+  });
+
+  // The assertion that names the actual consequence rather than a length
+  // number: the value must survive the very schema it is truncated FOR.
+  // A length check that used a different limit than the protocol's, or one
+  // applied to the wrong branch, fails here even if the test above passed.
+  it("returns a guest cookie nickname that a hello message can actually carry", async () => {
+    auth.mockResolvedValue(null);
+    cookieStore.get.mockReturnValue({ value: "x".repeat(200) });
+
+    const identity = await resolveIdentity();
+
+    expect(() =>
+      parseClientMessage(
+        encode({ t: "hello", lastSeenSeq: 0, nickname: identity.nickname })
+      )
+    ).not.toThrow();
+  });
+
+  // Same surrogate-pair hazard as the signed-in branch above, on a value an
+  // attacker (or just a user with an emoji in a hand-edited cookie)
+  // controls directly. `slice(0, 32)` would emit a lone high surrogate here.
+  it("truncates a guest cookie by whole character instead of splitting a surrogate pair", async () => {
+    auth.mockResolvedValue(null);
+    cookieStore.get.mockReturnValue({ value: "a".repeat(31) + "\u{1F600}" + "more" });
+
+    const identity = await resolveIdentity();
+
+    expect(identity.nickname).toBe("a".repeat(31));
   });
 
   it("treats an empty session name as signed-out and falls back to the guest cookie", async () => {

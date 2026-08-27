@@ -44,6 +44,12 @@ function truncateToCodePoints(value: string, maxLength: number): string {
  * session -- which is the common case, since guests can bid in any room
  * without signing in.
  *
+ * BOTH branches run their nickname through `truncateToCodePoints`. Neither
+ * source is trustworthy: a GitHub display name can be any length, and the
+ * guest cookie is client-writable (`httpOnly: false`, see `proxy.ts`).
+ * This function is the only length gate between either of them and
+ * `clientMessageSchema`'s `.max(NICKNAME_MAX_LENGTH)` on the wire.
+ *
  * `session.user.name` is GitHub's globally-unique `login`, not the
  * free-text display name: `auth.ts`'s `jwt` callback overwrites it with
  * `profile.login` on sign-in, specifically so two different real GitHub
@@ -79,7 +85,23 @@ export async function resolveIdentity(): Promise<{ nickname: string; persistent:
 
   const jar = await cookies();
   const existing = jar.get(GUEST_COOKIE)?.value;
-  if (existing) return { nickname: existing, persistent: false };
+  // Truncated exactly like the signed-in branch above, and for a sharper
+  // reason: `proxy.ts` sets `openbid_guest` with `httpOnly: false`, so the
+  // browser can write it. This value is untrusted input, not something
+  // this app put there. An over-long one fails `clientMessageSchema`'s
+  // `.max(NICKNAME_MAX_LENGTH)` when `connectRoom` puts it on a `hello`,
+  // `RoomDO` closes that socket with 1003 ("unsupported payload"), and
+  // `connectRoom`'s `onclose` immediately reconnects and sends the same
+  // over-long nickname again -- an infinite reconnect loop that locks that
+  // browser out of every room in the app until the cookie is cleared by
+  // hand. Truncating here is the whole fix: there is no other length gate
+  // between the cookie and the wire.
+  if (existing) {
+    return {
+      nickname: truncateToCodePoints(existing, NICKNAME_MAX_LENGTH),
+      persistent: false,
+    };
+  }
 
   return { nickname: generateGuestNickname(), persistent: false };
 }
