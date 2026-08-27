@@ -314,6 +314,20 @@ Real ones, not modesty:
   passed and take the "re-arm" branch instead of closing. Widened the margin to
   400ms; confirmed with 30 isolated re-runs and 10 additional full-suite re-runs,
   all green.
+- **`npm audit` reports 1 critical / 7 high / 3 moderate, all in dev-only
+  tooling.** Every flagged package (`esbuild`, `sharp`, `undici`, `ws`, `vite`,
+  `vite-node`, `vitest`, `wrangler`, `miniflare`, `@cloudflare/vitest-pool-workers`)
+  is a transitive dependency of the Cloudflare Workers test/dev toolchain or the
+  Vite/Vitest test runner — nothing in `dependencies` (only `devDependencies`)
+  is affected, and none of it runs against untrusted input in production.
+  `npm audit fix` (no `--force`) resolves nothing: `@cloudflare/vitest-pool-workers@0.12.21`
+  pins exact versions of `esbuild`, `wrangler`, and `miniflare` in its own
+  manifest, so npm cannot bump them independently. The only path npm offers is
+  `@cloudflare/vitest-pool-workers@0.22.0`, which requires `vitest@^4.1.0` — a
+  major-version bump of the test runner backing all 369 tests in this repo,
+  including the Durable Object replay/settlement suite, for a toolchain that
+  never processes untrusted input. Left unfixed as an accepted, documented risk
+  rather than taking a forced major bump to clear a number.
 
 ## Layout
 
