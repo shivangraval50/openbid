@@ -237,7 +237,7 @@ work with none of them set.
 ## Tests
 
 ```bash
-npm test                                     # 397 tests, 40 files
+npm test                                     # 398 tests, 40 files
 npm run typecheck                            # apps/web + shared packages
 npm run typecheck --workspace @openbid/room-do   # workers-types needs its own pass
 npm run e2e                                  # 3 Playwright tests, 2 spec files
@@ -356,7 +356,7 @@ Real ones, not modesty:
   pins exact versions of `esbuild`, `wrangler`, and `miniflare` in its own
   manifest, so npm cannot bump them independently. The only path npm offers is
   `@cloudflare/vitest-pool-workers@0.22.0`, which requires `vitest@^4.1.0` — a
-  major-version bump of the test runner backing all 397 tests in this repo,
+  major-version bump of the test runner backing all 398 tests in this repo,
   including the Durable Object replay/settlement suite, for a toolchain that
   never processes untrusted input. Left unfixed as an accepted, documented risk
   rather than taking a forced major bump to clear a number.

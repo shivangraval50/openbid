@@ -22,7 +22,7 @@ Worker's, in **two** variables — see [step 6](#6-deploy-the-web-app-to-vercel)
 ```bash
 node -v          # must be 22.x  (.nvmrc pins 22)
 npm ci           # never pnpm
-npm test         # 397 tests should pass before you deploy anything
+npm test         # 398 tests should pass before you deploy anything
 ```
 
 Accounts needed: Cloudflare, Neon, Vercel, GitHub, and Google AI Studio for the
@@ -331,7 +331,7 @@ Honest accounting, because the difference matters:
 
 **Verified on this machine:**
 
-- `npm ci`, `npm test` (397 passing), both typechecks, and `next build`.
+- `npm ci`, `npm test` (398 passing), both typechecks, and `next build`.
 - `npx wrangler dev --config packages/room-do/wrangler.toml` starts, binds both
   Durable Objects, and serves `GET /lobby/rooms`.
 - The full local flow: create a lot, two independent browser contexts bidding,

@@ -9,13 +9,19 @@ import { LiveRoom } from "./LiveRoom";
 // a real `WebSocket`, which doesn't exist in jsdom. It's never opened in
 // these tests, so it only needs to exist, not do anything.
 class FakeWebSocket {
+  static instances: FakeWebSocket[] = [];
   onopen: (() => void) | null = null;
   onmessage: (() => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
   readyState = 0;
-  constructor(public url: string) {}
+  constructor(public url: string) {
+    FakeWebSocket.instances.push(this);
+  }
   send(): void {}
+  // A no-op, deliberately: a real close is delivered asynchronously, and
+  // the test below depends on firing `onclose` LATER than the cleanup that
+  // requested it. Synchronous delivery here would hide the race.
   close(): void {}
 }
 
@@ -108,6 +114,54 @@ describe("LiveRoom", () => {
   // read as three "Bidders". The state below is exactly what the DO holds
   // after that: three participant records, two of them the same person.
   // `Object.keys(server.participants).length` reports 3 and fails this.
+  // Catches: a superseded connection's late `onclose` overwriting the live
+  // connection's "open" status, which pinned the room at "Disconnected."
+  // forever while the replacement socket sat there connected and healthy.
+  //
+  // Reproduces the real interleaving, which is only possible because a close
+  // is delivered asynchronously: the effect re-runs and closes A, B opens and
+  // reports "open", and only THEN does A's queued `onclose` land.
+  it("ignores a superseded connection's close after its replacement is open", () => {
+    FakeWebSocket.instances = [];
+    const { rerender } = render(
+      <LiveRoom
+        roomId="room-race"
+        initialSeq={1}
+        initialServerTime={1_000}
+        initialState={seededState()}
+        socketBaseUrl="http://ws.test"
+        nickname="ada"
+        persistent={false}
+      />
+    );
+
+    const first = FakeWebSocket.instances[0]!;
+    act(() => first.onopen?.());
+    expect(screen.queryByText(/Disconnected/i)).toBeNull();
+
+    // Changing a dependency re-runs the connect effect: cleanup closes A,
+    // then a second socket is constructed.
+    rerender(
+      <LiveRoom
+        roomId="room-race"
+        initialSeq={1}
+        initialServerTime={1_000}
+        initialState={seededState()}
+        socketBaseUrl="http://ws.test"
+        nickname="ada-renamed"
+        persistent={false}
+      />
+    );
+    const second = FakeWebSocket.instances[1]!;
+    expect(second).not.toBe(first);
+    act(() => second.onopen?.());
+
+    // A's close arrives last. It must not be allowed to speak for the room.
+    act(() => first.onclose?.());
+
+    expect(screen.queryByText(/Disconnected/i)).toBeNull();
+  });
+
   it("counts distinct bidders by nickname, so one person's reconnects are not three bidders", () => {
     render(
       <LiveRoom

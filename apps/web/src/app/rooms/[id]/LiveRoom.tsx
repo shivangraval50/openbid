@@ -106,15 +106,37 @@ export function LiveRoom(props: {
 
   useEffect(() => {
     const url = `${props.socketBaseUrl.replace(/^http/, "ws")}/rooms/${props.roomId}/ws`;
+    // `superseded` discards status updates from a connection this effect has
+    // already torn down. A close event is delivered asynchronously, so on a
+    // re-run the real order is: cleanup closes connection A -> connection B
+    // opens and reports "open" -> A's queued `onclose` fires and reports
+    // "closed", overwriting it. The room then showed "Disconnected."
+    // permanently while B sat there connected and healthy, because nothing
+    // ever emits "open" a second time for one socket.
+    //
+    // Guarded here rather than in `connectRoom`, which is deliberately kept
+    // reporting "closed" on a disposed socket -- that is its own contract and
+    // its own test. Knowing whether a replacement exists is this effect's
+    // business, not the transport's.
+    //
+    // Found by CI, where a cold Turbopack cache compiles this page mid-test
+    // and Fast Refresh remounts the component. Nothing about it is dev-only:
+    // this effect also re-runs whenever any dependency below changes.
+    let superseded = false;
     const conn = connectRoom({
       url,
       nickname: props.nickname ?? "guest",
       persistent: props.persistent ?? false,
       store,
-      onStatus: setStatus,
+      onStatus: (next) => {
+        if (!superseded) setStatus(next);
+      },
     });
     connRef.current = conn;
-    return () => conn.close();
+    return () => {
+      superseded = true;
+      conn.close();
+    };
   }, [props.roomId, props.socketBaseUrl, props.nickname, props.persistent, store]);
 
   // Re-render the countdown on a timer; the clock value itself comes from
