@@ -17,3 +17,24 @@ jobs:
       - run: npm run typecheck
       - run: npm run typecheck --workspace @openbid/room-do
       - run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+        env:
+          ROOMS_BASE_URL: http://127.0.0.1:8787
+          NEXT_PUBLIC_ROOMS_BASE_URL: http://127.0.0.1:8787
+          AUTH_SECRET: ci-not-a-real-secret
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report

@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { defaultExclude, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
@@ -17,5 +17,11 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
+    // Playwright owns `e2e/**` (its own `*.spec.ts` files, run via
+    // `npm run e2e`, never vitest); without this, vitest's default
+    // `*.spec.ts` include pattern picks them up too and its Node-based
+    // runner then imports `@playwright/test`, which refuses to construct a
+    // `test()` outside the Playwright runner.
+    exclude: [...defaultExclude, "e2e/**"],
   },
 });
