@@ -1,0 +1,250 @@
+/* Lobby. Two groups, generously separated from each other and tight within
+ * themselves -- layout.md's "Group related items ... use negative space ...
+ * to show when elements are related and to separate information into
+ * distinct areas." */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-7);
+}
+
+.masthead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+}
+
+.title {
+  font-size: var(--ob-type-title1);
+  font-weight: var(--ob-weight-semibold);
+  line-height: var(--ob-leading-tight);
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  max-width: 38ch;
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-subhead);
+}
+
+.card {
+  padding: var(--ob-space-5);
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-hairline);
+  border-radius: var(--ob-radius-lg);
+}
+
+.createForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+}
+
+.fieldLabel {
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-footnote);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.controlRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+}
+
+/* Stacked on a phone, side by side once there is room. layout.md warns
+ * against full-width buttons on mobile only where they crowd the hardware
+ * edges; here the button sits inside a card with its own generous inset, and
+ * a full-width primary action is the established web pattern for a
+ * single-field form -- an intentional divergence from the native guidance,
+ * noted in the task report. */
+@media (min-width: 30rem) {
+  .controlRow {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .textInput {
+    flex: 1 1 auto;
+  }
+}
+
+.textInput {
+  min-height: var(--ob-hit-min);
+  padding: 0 var(--ob-space-3);
+  background: var(--ob-bg);
+  color: var(--ob-label);
+  border: 1px solid var(--ob-hairline-strong);
+  border-radius: var(--ob-radius-md);
+  font-size: var(--ob-type-body);
+  transition: border-color var(--ob-duration-fast) var(--ob-ease);
+}
+
+.textInput::placeholder {
+  color: var(--ob-label-tertiary);
+}
+
+.textInput:hover {
+  border-color: var(--ob-label-tertiary);
+}
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--ob-hit-min);
+  padding: 0 var(--ob-space-5);
+  background: var(--ob-accent-fill);
+  color: var(--ob-on-accent-fill);
+  border: 1px solid transparent;
+  border-radius: var(--ob-radius-md);
+  font-size: var(--ob-type-subhead);
+  font-weight: var(--ob-weight-semibold);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter var(--ob-duration-fast) var(--ob-ease);
+}
+
+.submit:hover {
+  filter: brightness(1.08);
+}
+
+.submit:active {
+  filter: brightness(0.94);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ob-space-3);
+  margin-bottom: var(--ob-space-3);
+}
+
+.sectionTitle {
+  font-size: var(--ob-type-title3);
+  font-weight: var(--ob-weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.count {
+  color: var(--ob-label-tertiary);
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-footnote);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: var(--ob-space-6) var(--ob-space-5);
+  background: var(--ob-surface);
+  border: 1px dashed var(--ob-hairline-strong);
+  border-radius: var(--ob-radius-lg);
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-subhead);
+  text-align: center;
+}
+
+.lots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+}
+
+.lotRow {
+  border: 1px solid var(--ob-hairline);
+  border-radius: var(--ob-radius-md);
+  background: var(--ob-surface);
+  transition: border-color var(--ob-duration-fast) var(--ob-ease),
+    background-color var(--ob-duration-fast) var(--ob-ease);
+}
+
+.lotRow:hover {
+  border-color: var(--ob-hairline-strong);
+  background: var(--ob-surface-raised);
+}
+
+/* The whole row is the target, not just the words -- focus-and-selection.md:
+ * "In general, use a focus ring for a text or search field, but use a
+ * highlight in a list or collection ... it's usually easier for people to
+ * view lists and collections when an entire row is highlighted." */
+.lotLink {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--ob-space-1) var(--ob-space-4);
+  min-height: var(--ob-hit-min);
+  padding: var(--ob-space-3) var(--ob-space-4);
+  border-radius: var(--ob-radius-md);
+  color: inherit;
+  text-decoration: none;
+}
+
+.lotName {
+  font-size: var(--ob-type-body);
+  font-weight: var(--ob-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.lotMeta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ob-space-3);
+}
+
+.lotPrice {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.15em;
+  color: var(--ob-label);
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-subhead);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.lotPriceNone {
+  color: var(--ob-label-tertiary);
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-footnote);
+}
+
+.unit {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+}
+
+/* Status is carried by a word AND a shape, never by hue alone --
+ * accessibility.md: "Convey information with more than color alone." */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ob-space-1);
+  padding: 0.15rem var(--ob-space-2);
+  border-radius: var(--ob-radius-pill);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.statusOpen {
+  background: var(--ob-confirmed-soft);
+  color: var(--ob-confirmed);
+}
+
+.statusClosed {
+  background: var(--ob-surface-raised);
+  color: var(--ob-label-tertiary);
+}
+
+.statusDot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+}
