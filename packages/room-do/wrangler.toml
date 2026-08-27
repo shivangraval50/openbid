@@ -10,11 +10,16 @@ class_name = "RoomDO"
 name = "LOBBY"
 class_name = "LobbyDO"
 
-# Nothing has deployed yet (that is Task 19's job), so this class list can
-# still be edited in place under the same "v1" tag. Cloudflare migrations are
-# append-only *once applied* — after the first real `wrangler deploy`, adding
-# a Durable Object class must go in a new [[migrations]] block with its own
-# tag, never by editing this one.
+# APPLIED. Deployed 2026-08-27 as openbid-rooms (version
+# 5f9ee71f-9c20-4e97-b4a9-2762c0595382) to
+# https://openbid-rooms.shivangraval5789.workers.dev.
+#
+# This block is now FROZEN. Cloudflare migrations are append-only once
+# applied: do not edit this class list or this tag. Adding a Durable Object
+# class from here on must go in a NEW [[migrations]] block with its own tag
+# (v2, v3, ...). Editing "v1" after the fact desynchronises Cloudflare's
+# record of applied migrations from the file and the deploy fails, or worse
+# succeeds against the wrong assumption.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomDO", "LobbyDO"]
