@@ -73,7 +73,6 @@
  * entering-data.md: "Dynamically validate field values ... provide feedback
  * as soon as you detect a problem." Colour plus the worded alert, never
  * colour alone. */
-.invalid .input,
 .input[aria-invalid="true"] {
   border-color: var(--ob-rejected);
 }

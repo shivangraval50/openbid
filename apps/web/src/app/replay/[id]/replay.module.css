@@ -240,12 +240,7 @@
 }
 
 @media (max-width: 34rem) {
-  .subtitle {
-  color: var(--ob-label-secondary);
-  font-size: var(--ob-type-subhead);
-}
-
-.panel {
+  .panel {
     padding: var(--ob-space-4);
   }
 
