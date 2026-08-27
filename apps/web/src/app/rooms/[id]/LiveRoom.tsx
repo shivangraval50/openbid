@@ -12,6 +12,7 @@ import {
 import { connectRoom, type ConnStatus, type RoomConnection } from "@/lib/socket";
 import { useAuctionSelector } from "@/hooks/useAuctionStore";
 import { BidForm } from "@/components/BidForm";
+import { Commentary } from "@/components/Commentary";
 import { ConnectionBanner } from "@/components/ConnectionBanner";
 import { Countdown } from "@/components/Countdown";
 import { PriceLadder } from "@/components/PriceLadder";
@@ -106,7 +107,27 @@ export function LiveRoom(props: {
 
   if (server === null) return <p>Loading…</p>;
 
+  // Two distinct notions of "over", deliberately not collapsed:
+  //
+  //   `closed`  -- what the UI should stop accepting bids on. Includes the
+  //               local countdown hitting zero, because a bid submitted
+  //               after the deadline is going to be rejected by
+  //               `validateBid` anyway and it is better not to invite it.
+  //   `settled` -- the SERVER's own `closed` event, the only thing that
+  //               establishes a winner. It arrives up to one round trip
+  //               (plus the DO's alarm scheduling) after the countdown
+  //               reads zero.
+  //
+  // Commentary keys on `settled`, never on `closed`: in the window between
+  // them `server.winner` is still null, so keying on `closed` would spend
+  // a provider call describing an auction that closed "with no bids"
+  // moments before the real winner arrived.
   const closed = server.status === "closed" || msRemaining <= 0;
+  const settled = server.status === "closed";
+  const winnerNickname =
+    server.winner === null
+      ? null
+      : server.participants[server.winner.participantId]?.nickname ?? null;
 
   return (
     <>
@@ -134,9 +155,18 @@ export function LiveRoom(props: {
         <p data-testid="outcome">
           {server.winner === null
             ? "Closed with no bids."
-            : `Won by ${server.participants[server.winner.participantId]?.nickname ?? "unknown"} at ${server.winner.amount}.`}
+            : `Won by ${winnerNickname ?? "unknown"} at ${server.winner.amount}.`}
         </p>
       ) : null}
+      {/* Decoration, and mounted unconditionally so it can observe the
+          open -> settled transition. Renders nothing at all until (and
+          unless) commentary actually arrives -- see Commentary.tsx. */}
+      <Commentary
+        settled={settled}
+        itemName={server.config.itemName}
+        winner={winnerNickname}
+        price={server.winner?.amount ?? null}
+      />
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { initialState, type AuctionConfig, type AuctionState } from "@openbid/auction-core";
 import { LiveRoom } from "./LiveRoom";
@@ -47,6 +47,13 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // Belt-and-braces alongside the in-test `vi.useRealTimers()` calls: if a
+  // fake-timer test fails part-way through, its trailing restore never
+  // runs and every later test in this file inherits frozen timers, which
+  // makes `waitFor` hang for its full timeout and reports a cascade of
+  // failures that have nothing to do with the real defect. Observed
+  // exactly that while mutation-testing the commentary wiring.
+  vi.useRealTimers();
 });
 
 describe("LiveRoom", () => {
@@ -128,5 +135,131 @@ describe("LiveRoom", () => {
     expect(after).toBe("0:05");
 
     vi.useRealTimers();
+  });
+
+  // Task 19: `/api/bot` had no caller at all before this. These tests are
+  // about the WIRING -- that the room actually asks for commentary, with
+  // the right outcome, only once the server has closed the auction.
+  // `Commentary.test.tsx` covers the component's own behaviour (every
+  // degradation path, the request shape, the fire-once guarantee).
+  describe("post-settlement commentary", () => {
+    function stubBot(response: Response | Error): ReturnType<typeof vi.fn> {
+      const fetchMock = vi.fn(
+        response instanceof Error ? () => Promise.reject(response) : () => Promise.resolve(response)
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    }
+
+    function botResponse(text: string): Response {
+      return new Response(JSON.stringify({ text, provider: "gemini" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    it("requests and displays commentary once the auction has closed", async () => {
+      const fetchMock = stubBot(botResponse("Sold to me for 250. Briskly done."));
+
+      render(
+        <LiveRoom
+          roomId="room-5"
+          initialSeq={9}
+          initialServerTime={1_000}
+          initialState={seededState({
+            status: "closed",
+            highBid: { participantId: "me", amount: 250, atMs: 1_000 },
+            winner: { participantId: "me", amount: 250 },
+          })}
+          socketBaseUrl="http://localhost:8787"
+        />
+      );
+
+      expect(await screen.findByTestId("commentary")).toHaveTextContent(
+        "Sold to me for 250. Briskly done."
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/bot");
+      // The winner is reported by NICKNAME, resolved out of
+      // `state.participants` -- never as the per-connection
+      // `participantId`, which is meaningless to a reader and is
+      // reassigned on every reconnect.
+      expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+        itemName: "liveroom-test",
+        winner: "me",
+        price: 250,
+      });
+    });
+
+    // The countdown reaching zero is NOT settlement: the room is closed by
+    // the DO's alarm, whose `closed` event arrives one round trip later,
+    // and `winner` is still null in between. Requesting on the local
+    // countdown instead of on the server's `status` would spend a provider
+    // call describing an auction that closed "with no bids" moments before
+    // the real winner landed -- and then spend a second one when it did.
+    //
+    // Fake timers, and `initialServerTime` well past `endsAtMs`, are both
+    // load-bearing. The store's clock is server-corrected: `selectServerNow`
+    // returns `Date.now() + (initialServerTime - Date.now())`, i.e. roughly
+    // `initialServerTime`, NOT the local wall clock. An earlier draft of
+    // this test set `endsAtMs: Date.now() - 1_000` with
+    // `initialServerTime: 1_000`, which made `msRemaining` about 1.8e12 ms
+    // -- the countdown never reached zero at all, so the test asserted
+    // nothing and passed even with `settled` deliberately mis-wired to
+    // `closed` (verified by making that exact mutation). The `0:00`
+    // assertion below is what pins the precondition down: with
+    // `settled = closed`, the fetch assertion after it fails.
+    it("does not request commentary merely because the countdown reached zero", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const fetchMock = stubBot(botResponse("premature"));
+
+      render(
+        <LiveRoom
+          roomId="room-6"
+          initialSeq={3}
+          initialServerTime={20_000}
+          initialState={seededState({
+            status: "open",
+            endsAtMs: 10_000,
+            highBid: { participantId: "me", amount: 180, atMs: 900 },
+          })}
+          socketBaseUrl="http://localhost:8787"
+        />
+      );
+
+      // Precondition: the countdown really has run out.
+      expect(screen.getByRole("timer")).toHaveTextContent("0:00");
+      // But the server has not said `closed`, so no commentary was
+      // requested. `Commentary` calls `fetch` synchronously inside its
+      // effect, which `render` has already flushed -- so this is a real
+      // check, not a race.
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("commentary")).not.toBeInTheDocument();
+
+      vi.useRealTimers();
+    });
+
+    it("still renders the auction outcome when commentary fails outright", async () => {
+      const fetchMock = stubBot(new TypeError("Failed to fetch"));
+
+      render(
+        <LiveRoom
+          roomId="room-7"
+          initialSeq={9}
+          initialServerTime={1_000}
+          initialState={seededState({
+            status: "closed",
+            highBid: { participantId: "me", amount: 250, atMs: 1_000 },
+            winner: { participantId: "me", amount: 250 },
+          })}
+          socketBaseUrl="http://localhost:8787"
+        />
+      );
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(screen.getByTestId("outcome")).toHaveTextContent(/won by me at 250/i);
+      expect(screen.queryByTestId("commentary")).not.toBeInTheDocument();
+    });
   });
 });
