@@ -51,6 +51,25 @@ This opens a browser for OAuth; it cannot be scripted. Confirm it worked:
 npx wrangler whoami
 ```
 
+### First-ever Cloudflare account: create the workers.dev subdomain
+
+A brand-new account has no `workers.dev` subdomain, and `wrangler deploy`
+refuses to upload without one:
+
+```
+✘ [ERROR] A request to the Cloudflare API (.../workers/scripts/openbid-rooms) failed.
+  You need a workers.dev subdomain in order to proceed. [code: 10063]
+```
+
+It cannot be created from the CLI. Open
+[dash.cloudflare.com](https://dash.cloudflare.com) and click **Workers & Pages**
+in the sidebar — just loading that page once creates the subdomain (you may be
+asked to choose the name, which becomes `<name>.workers.dev`). Then re-run the
+deploy.
+
+Hit on this project's own first deploy, after a successful `wrangler login` —
+so authentication succeeding tells you nothing about whether this step is done.
+
 ---
 
 ## 2. Create the Neon database and apply the schema
@@ -264,6 +283,14 @@ Both must be `https://` (not `http://`), or the browser will refuse the
 **redeploy**, not just a restart.
 
 ---
+
+> **Do not set `ANTHROPIC_API_KEY` on Vercel.** `selectProvider`
+> (`packages/llm/src/index.ts:40`) falls back to Anthropic *before* Gemini when
+> no `LLM_PROVIDER` is set, and an Anthropic key is billed per call against your
+> own account — so a key added "just in case" would quietly turn a free demo
+> into a metered one. `LLM_PROVIDER=gemini` above pins the choice even if a key
+> is present, but the safe configuration is to not put the Anthropic key in the
+> deployed environment at all. Claude is for local development, via `.env.local`.
 
 ## 7. Gemini API key (free tier)
 

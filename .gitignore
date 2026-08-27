@@ -9,3 +9,12 @@ playwright-report/
 test-results/
 .DS_Store
 *.tsbuildinfo
+.vercel
+
+# Vercel's `link` appends a blanket `.env*`, which would also ignore
+# apps/web/.env.example -- a file this repo deliberately tracks as the
+# documented list of variables the app needs. `.env*.local` above already
+# covers the real secrets (and `.dev.vars*` covers the Worker's), so the
+# blanket pattern is narrowed to the two names Vercel actually writes.
+.env
+.env.local
