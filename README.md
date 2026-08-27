@@ -281,6 +281,10 @@ Real ones, not modesty:
   requests it independently when the auction settles, so more than five bidders
   behind one NAT will see some requests 429 and simply render nothing. Fine for
   decoration; it would not be fine for anything load-bearing.
+- **Commentary is not cached.** It is requested per client, and again on every
+  later visit to an already-settled room, so it costs one provider call per view
+  rather than one per auction. The right fix is to store the line with the
+  settlement record; that isn't done.
 - **The key is a header.** On Vercel the limiter keys on
   `x-vercel-forwarded-for`, which the edge sets; off Vercel it falls back to
   `x-forwarded-for`, which any client can forge. Nothing in the code can fix that
