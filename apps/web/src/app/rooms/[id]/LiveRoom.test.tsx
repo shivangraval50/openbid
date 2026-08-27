@@ -126,6 +126,7 @@ describe("LiveRoom", () => {
     const { rerender } = render(
       <LiveRoom
         roomId="room-race"
+        itemName="race lot"
         initialSeq={1}
         initialServerTime={1_000}
         initialState={seededState()}
@@ -144,6 +145,7 @@ describe("LiveRoom", () => {
     rerender(
       <LiveRoom
         roomId="room-race"
+        itemName="race lot"
         initialSeq={1}
         initialServerTime={1_000}
         initialState={seededState()}
