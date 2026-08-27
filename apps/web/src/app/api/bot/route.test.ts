@@ -132,9 +132,21 @@ describe("POST /api/bot", () => {
       expect(botCommentary).not.toHaveBeenCalled();
     });
 
-    it("returns 400 when price is not finite (e.g. Infinity smuggled through as a number)", async () => {
+    // Deliberately NOT `postRequest({..., price: Number.POSITIVE_INFINITY})`:
+    // `JSON.stringify({price: Infinity})` silently produces `{"price":null}`
+    // (JSON.stringify converts Infinity/NaN to null), so that body would
+    // never actually carry a non-finite price to the server -- it would
+    // carry `price: null`, which the winner-without-price test above
+    // already covers, for a completely different reason. That was
+    // literally what this test did before this fix, and it "passed"
+    // while proving nothing about `.finite()`. A real wire payload CAN
+    // carry Infinity: `JSON.parse('{"price":1e400}')` overflows to
+    // `Infinity` (the JSON grammar allows the exponent; the underlying
+    // float parser doesn't reject the overflow), so a raw body with an
+    // unquoted `1e400` literal is what actually reaches the schema.
+    it("returns 400 when price overflows to Infinity in a raw wire payload", async () => {
       const res = await POST(
-        postRequest({ itemName: "X", winner: "ada", price: Number.POSITIVE_INFINITY }, "203.0.113.26")
+        rawRequest('{"itemName":"X","winner":"ada","price":1e400}', "203.0.113.26")
       );
 
       expect(res.status).toBe(400);
@@ -179,6 +191,39 @@ describe("POST /api/bot", () => {
       // A fresh IP must still get its own full budget.
       const res = await POST(postRequest(body, "203.0.113.41"));
       expect(res.status).toBe(200);
+    });
+
+    // Review round 2: x-forwarded-for is client-suppliable in general,
+    // and this test's own postRequest() helper rotates it for isolation
+    // -- which is exactly the attack this route must not fall for. On
+    // Vercel, x-vercel-forwarded-for is the header the edge itself sets
+    // (per Vercel's docs: "x-forwarded-for could be overwritten if
+    // you're using a proxy on top of Vercel" -- x-vercel-forwarded-for is
+    // not). The route must key on it when present, so rotating
+    // x-forwarded-for on every call can't manufacture a fresh budget.
+    it("keys on x-vercel-forwarded-for over x-forwarded-for, so rotating the latter can't defeat the limit", async () => {
+      selectProvider.mockReturnValue({ name: "anthropic", complete: vi.fn() });
+      botCommentary.mockResolvedValue("commentary");
+      const body = { itemName: "X", winner: "ada", price: 500 };
+
+      function requestWithBoth(vercelIp: string, forwardedFor: string): Request {
+        return new Request("http://localhost/api/bot", {
+          method: "POST",
+          headers: { "x-vercel-forwarded-for": vercelIp, "x-forwarded-for": forwardedFor },
+          body: JSON.stringify(body),
+        });
+      }
+
+      // Same trusted header on every call; a different, attacker-rotated
+      // x-forwarded-for each time. If the route keyed on x-forwarded-for,
+      // every call would land in a fresh bucket and the limit would
+      // never trigger.
+      for (let i = 0; i < 5; i++) {
+        const res = await POST(requestWithBoth("203.0.113.60", `10.0.0.${i}`));
+        expect(res.status).toBe(200);
+      }
+      const limited = await POST(requestWithBoth("203.0.113.60", "10.0.0.99"));
+      expect(limited.status).toBe(429);
     });
   });
 

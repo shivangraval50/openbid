@@ -37,14 +37,53 @@ const botRequestSchema: z.ZodType<AuctionOutcome> = z.union([
 // after a flaky network without leaving it open to being hammered. See
 // apps/web/src/lib/rateLimit.ts for exactly what this does and does not
 // guarantee (best-effort, per-instance, not a durable cross-instance cap;
-// deliberately not backed by Upstash or any external store).
+// deliberately not backed by Upstash or any external store) -- and note
+// that guarantee only holds because of the header choice in `clientKey`
+// below; a limiter keyed on a forgeable value protects nobody.
 const BOT_RATE_CAPACITY = 5;
 const BOT_RATE_WINDOW_MS = 60_000;
 const rateLimiter = new InMemoryRateLimiter(BOT_RATE_CAPACITY, BOT_RATE_WINDOW_MS);
 
+/**
+ * Picks the rate-limit key. `x-forwarded-for` alone is NOT trustworthy in
+ * general -- it is an ordinary request header, and any client can set it
+ * to a fresh value on every call (this file's own test suite rotates it
+ * for test isolation, which is exactly the attack this guards against).
+ *
+ * Verified against Vercel's own request-headers reference
+ * (https://vercel.com/docs/headers/request-headers, fetched during this
+ * review round rather than assumed) before relying on it, per the
+ * instruction not to trust recall here:
+ *
+ *   - `x-vercel-forwarded-for`: "identical to the x-forwarded-for header.
+ *     However, x-forwarded-for could be overwritten if you're using a
+ *     proxy on top of Vercel." This is the header Vercel's own edge
+ *     attaches, and it is not the one an upstream proxy (or a client, if
+ *     one somehow reached the origin directly) can overwrite before
+ *     Vercel sees it. Preferred.
+ *   - `x-forwarded-for`: on an actual Vercel deployment this IS also
+ *     overwritten at the edge with the real client IP ("we currently
+ *     overwrite the X-Forwarded-For header and do not forward external
+ *     IPs. This restriction is in place to prevent IP spoofing.") -- but
+ *     that guarantee is specific to requests that passed through
+ *     Vercel's edge. In local dev (`next dev`, and this test suite) there
+ *     is no edge in front of the server at all, so this header is
+ *     whatever the caller sets, with no trust properties whatsoever. It
+ *     is kept ONLY as the local-dev fallback, not because it's trusted.
+ *   - `x-real-ip`: "identical to the x-forwarded-for header" per the same
+ *     page -- same caveat, used only as a last-resort fallback.
+ *
+ * Net effect: on Vercel, this is spoof-resistant. Off Vercel (local dev,
+ * or any other host), it is not, and nothing here can make it so without
+ * an actual trusted-proxy boundary this app doesn't have.
+ */
 function clientKey(request: Request): string {
+  const vercelForwardedFor = request.headers.get("x-vercel-forwarded-for");
+  if (vercelForwardedFor) return vercelForwardedFor.split(",")[0]!.trim();
+
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) return forwardedFor.split(",")[0]!.trim();
+
   return request.headers.get("x-real-ip") ?? "unknown";
 }
 
