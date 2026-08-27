@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 export default {
-  transpilePackages: ["@openbid/auction-core", "@openbid/protocol", "@openbid/store", "@openbid/charts"],
+  transpilePackages: [
+    "@openbid/auction-core",
+    "@openbid/protocol",
+    "@openbid/store",
+    "@openbid/charts",
+    "@openbid/llm",
+  ],
   // The Playwright config (apps/web/playwright.config.ts) drives the app
   // via http://127.0.0.1:3000, not http://localhost:3000. Next's dev-only
   // cross-origin guard does not treat those as the same origin by default,
