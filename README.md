@@ -8,6 +8,9 @@ what it says.
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript (strict) · Cloudflare
 Durable Objects with SQLite storage · Neon Postgres · Zustand · Zod · Playwright
 
+**Screenshots:** [`docs/screenshots/`](docs/screenshots) — every page and state,
+light and dark, narrow and wide.
+
 ---
 
 ## The hard part
@@ -171,6 +174,13 @@ bookkeeping.
   blind retries can't duplicate a row.
 - **Neon holds only completed auctions.** A live room list can't be a Postgres
   table when Postgres never sees live rooms, so `LobbyDO` is the registry.
+- **`INSUFFICIENT_BUDGET` is a per-bid cap, not a spend ledger.** Each
+  participant gets a fixed starting budget on joining, and `validateBid` rejects
+  any single bid above it; `reduce` never decrements it. That is correct for an
+  English auction — you pay only if you win, so there is nothing to deduct while
+  bidding — and it is why the property test asserts that no *accepted bid* ever
+  exceeds the starting budget, rather than asserting something vacuous about a
+  number that never moves.
 - **Identity.** Guests can bid without signing in — `proxy.ts` assigns a
   nickname cookie on first request. GitHub sign-in (Auth.js, JWT sessions, no
   database adapter) only adds a persistent leaderboard identity. Signed-in names
@@ -289,17 +299,24 @@ Real ones, not modesty:
   `x-vercel-forwarded-for`, which the edge sets; off Vercel it falls back to
   `x-forwarded-for`, which any client can forge. Nothing in the code can fix that
   without a trusted-proxy boundary this app doesn't have.
-- **openbid has no CSS.** Not a line. Every task in this project went into the
-  ordering model, the reconciliation, and the tests; the UI is unstyled browser
-  defaults. It is fully functional and completely plain.
+- **Nothing tests the way it looks.** There is a real stylesheet — a `:root`
+  token layer in `apps/web/src/app/globals.css` plus one CSS Module per
+  component, no framework — and [`docs/screenshots/`](docs/screenshots) holds 53
+  captures of it: every page and state, light and dark, narrow and wide. Those
+  were taken and reviewed by hand. Nothing in CI compares against them, and the
+  Playwright specs assert on text and counts, never on pixels, so a visual
+  regression would ship green.
 - **Prediction-market mode is deliberately out of scope.** The original idea
   offered "auction *or* prediction market". A probability series is a different
   state machine and would have diluted both, so this is auction-only by decision,
   not by omission.
-- **No bid history UI, and no "you won" indicator.** Participant ids are
-  per-connection and reassigned on reconnect, so the client cannot honestly tell
-  a reconnected winner that they won. Identity is by nickname only; the outcome
-  line names the winner rather than addressing you.
+- **No per-bid list in a live room, and no "you won" indicator.** The live room
+  shows the price series and who currently leads, not an itemised log of who bid
+  what when — that exists only for settled auctions, on `/replay/[id]`. And
+  there is no self-indicator at all: participant ids are per-connection and
+  reassigned on reconnect, so the client cannot honestly tell a reconnected
+  winner that they won. Identity is by nickname only; the outcome line names the
+  winner rather than addressing you.
 - **The lobby list is unbounded** and never evicts closed rooms, and the DO's
   event log is never compacted. Neither matters at demo scale; both would at real
   scale.
