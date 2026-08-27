@@ -159,8 +159,13 @@ export type ArchivedAuction = z.infer<typeof archivedAuctionSchema>;
 const participantSchema = z.object({
   id: z.string().min(1),
   nickname: z.string().min(1),
-  // Not `money`: a budget legitimately reaches 0 in a room configured with a
-  // zero starting budget, and nothing in `reduce` forbids it.
+  // `.finite()`, not `money`. `money` (positive) would also pass today,
+  // since `reduce` copies `config.startingBudget` verbatim and
+  // `auctionConfigSchema` already requires that to be positive -- but this
+  // schema's job is to describe what an `AuctionState` can hold, not to
+  // re-assert a config rule from a second place that would then have to be
+  // kept in step with it. Nothing in `reduce` or `validateBid` requires a
+  // participant's budget to be positive.
   budget: z.number().finite(),
   // `.default(false)` for the same forward/backward-compatibility reason as
   // the `joined` event's own flag: a snapshot from a Worker that predates the

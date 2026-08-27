@@ -40,11 +40,11 @@ export function rankBidders(rows: BidderRow[]): BidderRow[] {
  * collision between two signed-in "Alex"es; this closes the one between
  * a guest and anybody.
  *
- * `DATABASE_URL` is deliberately unset
- * in tests, and may be unset in a deployment; the leaderboard is a
- * read-only nicety, so ANY failure here -- missing config, a thrown
- * client construction, a rejected query -- degrades to an empty list
- * rather than ever surfacing as a 500 on the leaderboard page.
+ * `DATABASE_URL` is deliberately unset in tests, and may be unset in a
+ * deployment; the leaderboard is a read-only nicety, so ANY failure here
+ * -- missing config, a thrown client construction, a rejected query --
+ * degrades to an empty list rather than ever surfacing as a 500 on the
+ * leaderboard page.
  */
 export async function topBidders(limit = 20): Promise<BidderRow[]> {
   const url = process.env.DATABASE_URL;

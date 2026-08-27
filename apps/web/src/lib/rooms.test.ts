@@ -1,5 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { initialState, type AuctionConfig } from "@openbid/auction-core";
 import { fetchSnapshot, listRooms, roomsBaseUrl } from "./rooms";
+
+const config: AuctionConfig = {
+  itemName: "rooms-test",
+  startingPrice: 100,
+  minIncrement: 10,
+  startingBudget: 500,
+  antiSnipeWindowMs: 10_000,
+  antiSnipeExtensionMs: 15_000,
+  endsAtMs: 1_000_000,
+};
+
+/** A structurally complete `AuctionState`, as the Worker's `/snapshot`
+ *  route actually returns it. `fetchSnapshot` validates `state` with
+ *  `auctionStateSchema`, so a partial stub (this file used `{ status:
+ *  "open" }` before that) is correctly rejected now -- see the dedicated
+ *  case for that below. */
+const validState = initialState(config);
 
 beforeEach(() => {
   process.env.ROOMS_BASE_URL = "https://rooms.test";
@@ -31,13 +49,56 @@ describe("fetchSnapshot", () => {
       "fetch",
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ seq: 3, serverTime: 1, state: { status: "open" } }), {
+          new Response(JSON.stringify({ seq: 3, serverTime: 1, state: validState }), {
             status: 200,
           })
       )
     );
     const snapshot = await fetchSnapshot("alpha");
     expect(snapshot?.seq).toBe(3);
+    expect(snapshot?.state).toEqual(validState);
+  });
+
+  // The HTTP snapshot lands in the same store, and then in the same
+  // `reduce`, as a socket snapshot -- which `serverMessageSchema` validates
+  // with `auctionStateSchema`. This path used to check only that `state` was
+  // *an object*, so a structurally wrong state (here: a plausible-looking
+  // partial, which is exactly what this file's own fixtures used to be)
+  // flowed straight through into client state. `reduce`'s switch has no
+  // default case, so nothing downstream would have caught it.
+  it("returns null when state is an object but not a valid auction state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ seq: 3, serverTime: 1, state: { status: "open" } }), {
+            status: 200,
+          })
+      )
+    );
+    expect(await fetchSnapshot("alpha")).toBeNull();
+  });
+
+  // And the normalisation the parse exists to apply: a participant record
+  // with no `persistent` flag (a snapshot from a Worker predating that
+  // field) comes back defaulted rather than rejected, so the caller can
+  // never see an `undefined` where `Participant.persistent` promises a
+  // boolean. A boolean type guard that returned the RAW body would hand
+  // back the undefined and fail this.
+  it("normalises a participant with no persistent flag rather than rejecting it", async () => {
+    const legacy = {
+      ...validState,
+      participants: { ada: { id: "ada", nickname: "ada", budget: 500 } },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ seq: 3, serverTime: 1, state: legacy }), { status: 200 })
+      )
+    );
+    const snapshot = await fetchSnapshot("alpha");
+    expect(snapshot?.state.participants["ada"]?.persistent).toBe(false);
   });
 
   // A malformed envelope must fail loudly (return null, same as a 404),
@@ -137,7 +198,7 @@ describe("fetchSnapshot", () => {
   });
 
   // NOTE: this does not by itself require the `Array.isArray` guard in
-  // `isValidSnapshotEnvelope` -- `JSON.parse("[1,2,3]")` has no own `seq`/
+  // `parseSnapshotEnvelope` -- `JSON.parse("[1,2,3]")` has no own `seq`/
   // `serverTime`/`state` properties, so the `typeof v.seq !== "number"`
   // check alone already rejects it. The guard is defence-in-depth (an
   // array is not a sensible envelope regardless of what happens to be on
@@ -158,7 +219,7 @@ describe("fetchSnapshot", () => {
   // res.json() } catch { return null; }` around the parse would mask a
   // deleted `if (!res.ok) return null;` guard and let this test pass for
   // the wrong reason. With a shape that would satisfy
-  // `isValidSnapshotEnvelope`, deleting the `!res.ok` guard makes this
+  // `parseSnapshotEnvelope`, deleting the `!res.ok` guard makes this
   // fall through and return that body instead of null, so the test only
   // passes because the status guard runs first.
   it("returns null when the Worker responds with a server error, even with a well-formed body", async () => {
@@ -166,7 +227,7 @@ describe("fetchSnapshot", () => {
       "fetch",
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ seq: 3, serverTime: 1, state: { status: "open" } }), {
+          new Response(JSON.stringify({ seq: 3, serverTime: 1, state: validState }), {
             status: 500,
           })
       )

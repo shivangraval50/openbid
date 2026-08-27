@@ -128,6 +128,29 @@ describe("expiry and settlement", () => {
     expect(body.state.status).toBe("closed");
   });
 
+  // The other side of `winnerPersistent`'s `?? false`: an unsold auction has
+  // no winner to look up at all. Deliberately timing-free -- the room is
+  // already expired at /init and nobody ever bids -- so this branch is pinned
+  // without opening another real deadline to race. A `winnerPersistent: true`
+  // default, or one derived from anything other than the winning participant,
+  // fails here.
+  it("archives an unsold auction with no winner and no persistent claim", async () => {
+    const id = roomId("unsold");
+    await initRoom(id, configEndingIn(-1));
+
+    await fireAlarm(id);
+
+    await runInDurableObject(stubFor(id), (_instance: RoomDO, state: DurableObjectState) => {
+      const payloadRows = state.storage.sql
+        .exec<{ payload: string }>("SELECT payload FROM outbox")
+        .toArray();
+      const record = JSON.parse(payloadRows[0]!.payload) as SettlementRecord;
+      expect(record.winnerNickname).toBeNull();
+      expect(record.winningPrice).toBeNull();
+      expect(record.winnerPersistent).toBe(false);
+    });
+  });
+
   it("rejects bids after settlement with AUCTION_CLOSED", async () => {
     const id = roomId("after");
     await initRoom(id, configEndingIn(-1));
@@ -159,12 +182,20 @@ describe("expiry and settlement", () => {
       // participant" instead of correctly mapping winnerId -> nickname
       // would still pass every assertion below; a second, losing bidder
       // rules that out.
-      const { ws: bobWs, inbox: bobInbox } = await openSocket(id, "bob");
+      //
+      // The two also carry OPPOSITE `persistent` flags -- bob a guest,
+      // grace signed in -- so the same "first/only participant" bug is
+      // ruled out for that field too, and the whole path from the `hello`
+      // through the `joined` event and `state.participants` to the archived
+      // record is exercised end to end in real workerd. `alarm()` resolves
+      // the flag with no socket to consult, which is why it has to be on
+      // the event and not only on the attachment.
+      const { ws: bobWs, inbox: bobInbox } = await openSocket(id, "bob", false);
       await waitFor(bobInbox, (m) => m.t === "snapshot", "bob's snapshot");
       bobWs.send(encode({ t: "bid", clientSeq: 1, amount: 100 }));
       await waitFor(bobInbox, (m) => m.t === "ack", "bob's ack");
 
-      const { ws: graceWs, inbox: graceInbox } = await openSocket(id, "grace");
+      const { ws: graceWs, inbox: graceInbox } = await openSocket(id, "grace", true);
       await waitFor(graceInbox, (m) => m.t === "snapshot", "grace's snapshot");
       graceWs.send(encode({ t: "bid", clientSeq: 1, amount: 150 }));
       await waitFor(graceInbox, (m) => m.t === "ack", "grace's ack");
@@ -207,10 +238,8 @@ describe("expiry and settlement", () => {
         expect(record.startingPrice).toBe(config.startingPrice);
         expect(record.winnerNickname).toBe("grace");
         expect(record.winningPrice).toBe(150);
-        // Both bidders connected as guests, so the archived row must not
-        // claim a persistent identity for either -- the leaderboard filters
-        // on this column, and a `true` here would rank a forgeable nickname.
-        expect(record.winnerPersistent).toBe(false);
+        // grace is the signed-in one, and grace won.
+        expect(record.winnerPersistent).toBe(true);
 
         // A real check on the log's contents, not just "it's an array"
         // (which `bidLog: unknown[]` already guarantees at compile time
@@ -218,66 +247,20 @@ describe("expiry and settlement", () => {
         // room actually produced — both joins, both bids, then the close.
         const types = record.bidLog.map((e) => (e as { type: string }).type);
         expect(types).toEqual(["joined", "bidPlaced", "joined", "bidPlaced", "closed"]);
+
+        // And the flag is per participant, not per room: each `joined` event
+        // carries the value its own socket asserted.
+        const joins = record.bidLog.filter(
+          (e): e is { type: "joined"; nickname: string; persistent: boolean } =>
+            (e as { type?: string }).type === "joined"
+        );
+        expect(joins.map((j) => [j.nickname, j.persistent])).toEqual([
+          ["bob", false],
+          ["grace", true],
+        ]);
       });
     }
   );
-
-  // The end-to-end assertion for the whole `persistent` path, run through a
-  // real Durable Object in real workerd: the flag rides in on the `hello`,
-  // gets written onto the room's `joined` event, is folded into
-  // `state.participants` by `reduce`, and is read back out at settlement
-  // time -- by `alarm()`, which has no socket to consult. Two bidders with
-  // opposite flags, and the signed-in one wins, so a version that hardcoded
-  // either value, read the flag off the wrong participant, or dropped it
-  // anywhere along that chain fails here.
-  it("records the winner's persistent flag in the settlement, resolved per participant", async () => {
-    const id = roomId("persistent-winner");
-    const config = configEndingIn(2_000);
-    await initRoom(id, config);
-
-    // A guest bids first and loses; the signed-in bidder bids higher and
-    // wins. Opposite flags on the two participants is what makes this test
-    // able to fail on a "return the first participant's flag" bug.
-    const { ws: guestWs, inbox: guestInbox } = await openSocket(id, "brisk-otter-7f3", false);
-    await waitFor(guestInbox, (m) => m.t === "snapshot", "the guest's snapshot");
-    guestWs.send(encode({ t: "bid", clientSeq: 1, amount: 100 }));
-    await waitFor(guestInbox, (m) => m.t === "ack", "the guest's ack");
-
-    const { ws: userWs, inbox: userInbox } = await openSocket(id, "octocat", true);
-    await waitFor(userInbox, (m) => m.t === "snapshot", "octocat's snapshot");
-    userWs.send(encode({ t: "bid", clientSeq: 1, amount: 150 }));
-    await waitFor(userInbox, (m) => m.t === "ack", "octocat's ack");
-
-    // Same margin, and for the same reason, as the outbox-payload test
-    // above: `alarm()`'s `Date.now() >= endsAtMs` check runs inside the DO's
-    // isolate, not here.
-    const remaining = config.endsAtMs - Date.now();
-    if (remaining > 0) {
-      await new Promise((r) => setTimeout(r, remaining + 400));
-    }
-
-    await fireAlarm(id);
-
-    await runInDurableObject(stubFor(id), (_instance: RoomDO, state: DurableObjectState) => {
-      const payloadRows = state.storage.sql
-        .exec<{ payload: string }>("SELECT payload FROM outbox")
-        .toArray();
-      const record = JSON.parse(payloadRows[0]!.payload) as SettlementRecord;
-      expect(record.winnerNickname).toBe("octocat");
-      expect(record.winnerPersistent).toBe(true);
-
-      // And the flag really is per-participant, not room-wide: the losing
-      // guest's own `joined` event still says false.
-      const joins = record.bidLog.filter(
-        (e): e is { type: "joined"; nickname: string; persistent: boolean } =>
-          (e as { type?: string }).type === "joined"
-      );
-      expect(joins.map((j) => [j.nickname, j.persistent])).toEqual([
-        ["brisk-otter-7f3", false],
-        ["octocat", true],
-      ]);
-    });
-  });
 
   it(
     "removes a settlement from the outbox once the archive write succeeds",
