@@ -168,9 +168,21 @@ describe("expiry and settlement", () => {
       graceWs.send(encode({ t: "bid", clientSeq: 1, amount: 150 }));
       await waitFor(graceInbox, (m) => m.t === "ack", "grace's ack");
 
+      // The margin here must cover more than this process's own clock: it
+      // has to survive the round trip through `stub.fetch()` into the DO's
+      // isolate and whatever real time that takes to schedule under load,
+      // because `alarm()`'s own `Date.now() >= state.endsAtMs` check is
+      // evaluated there, not here. A too-tight margin (previously 20ms)
+      // reproduced this exact flake under `npm test`'s full-suite
+      // concurrency: the manual fire landed a hair before the DO's own
+      // clock agreed the deadline had passed, so `alarm()` took the
+      // "re-arm, not yet due" branch and never inserted a settlement,
+      // leaving `outboxCount` at 0 instead of 1. 400ms is enormous
+      // headroom for that round trip while still keeping this test well
+      // under a second.
       const remaining = config.endsAtMs - Date.now();
       if (remaining > 0) {
-        await new Promise((r) => setTimeout(r, remaining + 20));
+        await new Promise((r) => setTimeout(r, remaining + 400));
       }
 
       // DATABASE_URL is unset (undefined) in the test environment, so

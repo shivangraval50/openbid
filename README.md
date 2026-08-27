@@ -303,10 +303,17 @@ Real ones, not modesty:
 - **The lobby list is unbounded** and never evicts closed rooms, and the DO's
   event log is never compacted. Neither matters at demo scale; both would at real
   scale.
-- **One flaky test observed.** `packages/room-do/test/settlement.test.ts`'s
-  outbox-payload case failed once in roughly a dozen full-suite runs (expected 1
-  queued record, saw 0) and has not reproduced since. It is timing-sensitive
-  around a real alarm. Recorded here rather than quietly re-run.
+- **A flaky test, diagnosed and fixed.** `packages/room-do/test/settlement.test.ts`'s
+  outbox-payload case failed intermittently under `npm test`'s full-suite
+  concurrency (expected 1 queued record, saw 0) and was reproduced on demand (1
+  failure in 8 full-suite runs). Root cause: the test's own margin between
+  waiting out the auction's real deadline and manually firing the DO's `alarm()`
+  was only 20ms, which the round trip into the DO's isolate could occasionally
+  outrun under CPU contention from sibling test projects, so `alarm()`'s
+  `Date.now() >= endsAtMs` check would occasionally see the deadline as not yet
+  passed and take the "re-arm" branch instead of closing. Widened the margin to
+  400ms; confirmed with 30 isolated re-runs and 10 additional full-suite re-runs,
+  all green.
 
 ## Layout
 
