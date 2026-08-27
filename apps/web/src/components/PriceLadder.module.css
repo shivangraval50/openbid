@@ -1,0 +1,225 @@
+/* The price readout, and the two reference levels that give it meaning.
+ *
+ * This is one half of the instrument panel; PriceChart.module.css is the
+ * other, and the two deliberately share the same numeric face, the same
+ * accent, and the same card. charting-data.md: "Maintain continuity among
+ * multiple charts that use the same data. When you use multiple charts to
+ * help people explore one dataset from different perspectives, it's
+ * important to use one chart type and consistent colors, annotations,
+ * layouts, and descriptive text to signal that the dataset remains the same."
+ */
+
+.ladder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-1);
+  min-width: 0;
+}
+
+.eyebrow {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ob-space-2);
+}
+
+.price {
+  /* The single most important number on the screen gets the single display
+   * size -- layout.md, "Make essential information easy to find by giving it
+   * sufficient space." Monospaced and tabular so that 990 -> 1000 grows the
+   * number without the earlier digits sliding sideways, and
+   * `font-variant-ligatures: none` because some mono faces ligate digit
+   * pairs. */
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-hero);
+  font-weight: var(--ob-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-variant-ligatures: none;
+  line-height: 1;
+  /* Mono faces already sit on a fixed advance grid; the -0.045em this started
+   * at was fighting that grid and made "100" look cramped rather than tight. */
+  letter-spacing: -0.02em;
+  color: var(--ob-label);
+  transition: color var(--ob-duration-base) var(--ob-ease);
+}
+
+/* ---- The optimistic-bid lifecycle -------------------------------------
+ * feedback.md asks for feedback whose delivery matches the significance of
+ * what it says. There are three things to say here, and they escalate:
+ *
+ *   pending   -- passive, continuous, "this number is not a fact yet". A
+ *                dotted underline and a step down in colour weight, plus the
+ *                "confirming…" pill below. Not a colour that means good or
+ *                bad, because nothing good or bad has happened yet.
+ *   confirmed -- momentary. "When it makes sense, confirm that a significant
+ *                action or task has completed." One short wash of the
+ *                confirmed colour, then gone.
+ *   rejected  -- momentary, and the strongest of the three. The number is
+ *                about to roll backwards, which without a marker just looks
+ *                like the app losing data. The why is carried in words by
+ *                BidForm's alert.
+ *
+ * Each state is legible without its colour: pending has the underline and
+ * the pill, confirmed and rejected are named in adjacent text
+ * (accessibility.md, "Convey information with more than color alone").
+ */
+.priceRow[data-phase="pending"] .price {
+  color: var(--ob-label-secondary);
+  text-decoration: underline dotted
+    color-mix(in srgb, var(--ob-accent) 70%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.16em;
+}
+
+.priceRow[data-phase="confirmed"] .price {
+  animation: confirmPrice var(--ob-duration-resolve) var(--ob-ease) both;
+}
+
+.priceRow[data-phase="rejected"] .price {
+  animation: rejectPrice var(--ob-duration-resolve) var(--ob-ease) both;
+}
+
+@keyframes confirmPrice {
+  0% {
+    color: var(--ob-confirmed);
+  }
+  55% {
+    color: var(--ob-confirmed);
+  }
+  100% {
+    color: var(--ob-label);
+  }
+}
+
+@keyframes rejectPrice {
+  0% {
+    color: var(--ob-rejected);
+  }
+  55% {
+    color: var(--ob-rejected);
+  }
+  100% {
+    color: var(--ob-label);
+  }
+}
+
+/* Reduce Motion removes the fade, not the information: the resolved state
+ * still reads in its colour for the hold, it just does not animate out.
+ * motion.md, "Make motion optional." */
+@media (prefers-reduced-motion: reduce) {
+  .priceRow[data-phase="confirmed"] .price {
+    animation: none;
+    color: var(--ob-confirmed);
+  }
+
+  .priceRow[data-phase="rejected"] .price {
+    animation: none;
+    color: var(--ob-rejected);
+  }
+}
+
+/* A reserved row, so the "confirming…" pill appearing and vanishing four
+ * times a minute never nudges the price or the chart. */
+.pendingSlot {
+  display: flex;
+  align-items: center;
+  min-height: 1.5rem;
+}
+
+.pending {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ob-space-2);
+  padding: 0 var(--ob-space-2);
+  min-height: 1.5rem;
+  background: var(--ob-accent-soft);
+  color: var(--ob-accent);
+  border-radius: var(--ob-radius-pill);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+}
+
+/* loading.md: an indeterminate wait -- we cannot know when the ack lands --
+ * so an indeterminate indicator, which is what a looping pulse is. */
+.pendingDot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pendingPulse 1.1s var(--ob-ease) infinite;
+}
+
+@keyframes pendingPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pendingDot {
+    animation: none;
+  }
+}
+
+.leader {
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-subhead);
+}
+
+.leaderName {
+  color: var(--ob-label);
+  font-weight: var(--ob-weight-medium);
+}
+
+/* The two reference rungs. Right-aligned tabular digits so they form a
+ * column with each other; layout.md, "Align components with one another to
+ * make them easier to scan." Tight internal spacing (step 1-2) because they
+ * are one group, generous separation from the price above (step 4). */
+.rungs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-1);
+  margin-top: var(--ob-space-3);
+  padding-top: var(--ob-space-3);
+  border-top: 1px solid var(--ob-hairline);
+}
+
+.rung {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--ob-space-3);
+  font-size: var(--ob-type-footnote);
+}
+
+.rungLabel {
+  color: var(--ob-label-tertiary);
+}
+
+.rungValue {
+  color: var(--ob-label-secondary);
+  font-family: var(--ob-font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-variant-ligatures: none;
+  text-align: right;
+}
+
+.rungNext .rungValue {
+  color: var(--ob-label);
+  font-weight: var(--ob-weight-medium);
+}

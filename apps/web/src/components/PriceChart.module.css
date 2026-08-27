@@ -1,0 +1,109 @@
+/* The other half of the instrument panel. Same numeric face, same accent,
+ * same card as PriceLadder -- see that file's header for the guideline.
+ *
+ * charting-data.md: "Keep a chart simple, letting people choose when they
+ * want additional details", and "Aid comprehension by adding descriptive text
+ * to the chart. Descriptive text titles, subtitles, and annotations help
+ * emphasize the most important information." So: no gridlines, no axis
+ * furniture, no tick labels. One line, and an HTML caption row that says in
+ * words what the line covers and what its endpoints are.
+ */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+  min-width: 0;
+  /* Fills whatever height the instrument panel gives it, so the wide layout's
+   * two columns end level. With a fixed aspect ratio the chart column stopped
+   * well short of the readout column and left an obvious void inside the
+   * card -- the single biggest thing wrong with the first wide screenshot. */
+  height: 100%;
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ob-space-3);
+}
+
+.captionTitle {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.range {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  color: var(--ob-label-secondary);
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-footnote);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-variant-ligatures: none;
+  white-space: nowrap;
+}
+
+.rangeArrow {
+  color: var(--ob-label-tertiary);
+}
+
+.rangeNow {
+  color: var(--ob-label);
+  font-weight: var(--ob-weight-medium);
+}
+
+/* The plot. `aspect-ratio` plus a width-driven box means the reserved space is
+ * known before any script runs, so the canvas cannot cause layout shift on
+ * load -- and the canvas element itself keeps its intrinsic width/height
+ * attributes for the same reason.
+ *
+ * A FLAT surface, deliberately. An earlier pass filled this box with a
+ * vertical gradient standing in for an area fill; looking at it, the gradient
+ * was not anchored to the curve, so it implied a filled region above the line
+ * on the left-hand side -- ink that meant nothing. charting-data.md's "keep a
+ * chart simple" cuts the other way here: one line, one surface, no furniture
+ * that could be mistaken for data. */
+.plot {
+  position: relative;
+  width: 100%;
+  /* The aspect ratio is what reserves the box before any script runs (no
+   * layout shift on load); `flex: 1` lets it grow past that reservation to
+   * fill a taller column, which only ever makes the box bigger, never
+   * smaller, so nothing shifts on the way in. */
+  flex: 1 1 auto;
+  aspect-ratio: 16 / 5;
+  min-height: 5.5rem;
+  border-radius: var(--ob-radius-md);
+  background: var(--ob-surface-raised);
+  border: 1px solid var(--ob-hairline);
+  overflow: hidden;
+}
+
+/* Shown until the price has actually moved. With a single sample there is no
+ * line to draw, and an empty bordered box reads as something that failed to
+ * load rather than as a chart awaiting its first tick -- loading.md: "If you
+ * make people wait ... they can interpret the lack of content as a problem
+ * with your app. Instead, consider showing placeholder text." */
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--ob-space-4);
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-footnote);
+  text-align: center;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

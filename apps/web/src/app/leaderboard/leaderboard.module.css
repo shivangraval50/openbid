@@ -1,0 +1,108 @@
+/* A ranked table, not a chart: charting-data.md is explicit that "not every
+ * collection of data needs to be displayed in a chart. If you simply need to
+ * provide data ... consider offering the data in other ways, such as in a
+ * list or table." Rank, name, wins is exactly that case. */
+
+/* Three short columns; a 1040px-wide row put a win count most of a screen
+ * away from the name it counted. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-5);
+  width: 100%;
+  max-width: 34rem;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+}
+
+.title {
+  font-size: var(--ob-type-title1);
+  font-weight: var(--ob-weight-semibold);
+  line-height: var(--ob-leading-tight);
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-subhead);
+}
+
+.empty {
+  padding: var(--ob-space-6) var(--ob-space-5);
+  background: var(--ob-surface);
+  border: 1px dashed var(--ob-hairline-strong);
+  border-radius: var(--ob-radius-lg);
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-subhead);
+  text-align: center;
+}
+
+.board {
+  overflow: hidden;
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-hairline);
+  border-radius: var(--ob-radius-lg);
+}
+
+.row {
+  display: grid;
+  /* A fixed leading column so the ranks and names line up down the list --
+   * layout.md: "Align components with one another to make them easier to
+   * scan and to communicate organization and hierarchy." */
+  grid-template-columns: 2.25rem 1fr auto;
+  align-items: center;
+  gap: var(--ob-space-3);
+  padding: var(--ob-space-3) var(--ob-space-4);
+}
+
+.row + .row {
+  border-top: 1px solid var(--ob-hairline);
+}
+
+.rank {
+  color: var(--ob-label-tertiary);
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-footnote);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The top three are distinguished by weight and by an accent on the rank
+ * numeral, not by a medal colour: color.md, "Avoid relying solely on color
+ * to differentiate between objects". */
+.rowLeading .rank {
+  color: var(--ob-accent);
+  font-weight: var(--ob-weight-semibold);
+}
+
+.name {
+  font-weight: var(--ob-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.wins {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  font-family: var(--ob-font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  /* Right-aligned so the digits form a column that can be compared at a
+   * glance without reading each row's label. */
+  text-align: right;
+}
+
+.winsCount {
+  font-size: var(--ob-type-body);
+  font-weight: var(--ob-weight-semibold);
+}
+
+.winsUnit {
+  color: var(--ob-label-tertiary);
+  font-family: var(--ob-font-ui);
+  font-size: var(--ob-type-caption);
+}

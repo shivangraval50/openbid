@@ -1,0 +1,13 @@
+{
+  "name": "@openbid/store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@openbid/auction-core": "*",
+    "@openbid/protocol": "*",
+    "zustand": "^5.0.0"
+  }
+}

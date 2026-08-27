@@ -1,0 +1,122 @@
+/* The app shell: a single slim header, the page, a single slim footer.
+ *
+ * Deliberately NOT a native navigation bar or tab bar. The apple-design skill
+ * describes those for mobile/desktop *native* chrome; importing an iOS tab
+ * bar or a back-chevron nav bar into a web app would fight the browser's own
+ * back button and read as costume. What does transfer, and is what this
+ * header applies, is layout.md's "Differentiate controls from content" and
+ * "Place items to convey their relative importance ... place the most
+ * important items near the top and leading side".
+ */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--ob-space-4);
+  min-height: 3.25rem;
+  padding: 0 var(--ob-space-4);
+  /* materials.md: "Use materials to create visual separation and hierarchy
+   * between UI layers ... By allowing color to pass through from background
+   * to foreground, a material establishes visual hierarchy to help people
+   * more easily retain a sense of place." A translucent, blurred header does
+   * exactly that as the page scrolls under it. The fallback below is opaque
+   * for engines without backdrop-filter, and for anyone who asks for reduced
+   * transparency, so legibility never depends on the effect. */
+  background: color-mix(in srgb, var(--ob-bg) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--ob-hairline);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .header {
+    background: var(--ob-bg);
+  }
+}
+
+/* "Choose opacity levels that balance visual appeal with readability"
+ * (materials.md) -- and drop the translucency altogether when the platform
+ * says the person prefers it that way. */
+@media (prefers-reduced-transparency: reduce) {
+  .header {
+    background: var(--ob-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.1em;
+  min-height: var(--ob-hit-min);
+  align-content: center;
+  flex-wrap: wrap;
+  padding-block: var(--ob-space-2);
+  color: var(--ob-label);
+  font-size: var(--ob-type-subhead);
+  font-weight: var(--ob-weight-semibold);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.wordmarkAccent {
+  color: var(--ob-accent);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--ob-space-1);
+  margin-inline-start: auto;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ob-hit-min);
+  padding: 0 var(--ob-space-3);
+  border-radius: var(--ob-radius-sm);
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-footnote);
+  font-weight: var(--ob-weight-medium);
+  text-decoration: none;
+  transition: color var(--ob-duration-fast) var(--ob-ease),
+    background-color var(--ob-duration-fast) var(--ob-ease);
+}
+
+.navLink:hover {
+  color: var(--ob-label);
+  background: var(--ob-surface);
+}
+
+.main {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: var(--ob-page-max);
+  margin: 0 auto;
+  padding: var(--ob-space-6) var(--ob-space-4) var(--ob-space-7);
+}
+
+@media (min-width: 48rem) {
+  .main {
+    padding-inline: var(--ob-space-5);
+  }
+}
+
+.footer {
+  padding: var(--ob-space-4) var(--ob-space-4) var(--ob-space-6);
+  border-top: 1px solid var(--ob-hairline);
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-caption);
+  text-align: center;
+}

@@ -1,0 +1,181 @@
+/* The one place a bidder acts, so it gets the page's only filled button and
+ * its own card. layout.md: "Differentiate controls from content", and "Make
+ * controls easier to use by providing enough space around them." */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-3);
+}
+
+.label {
+  color: var(--ob-label-secondary);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-space-2);
+}
+
+@media (min-width: 26rem) {
+  .row {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  /* Sized to its content, not to the card. A four-digit amount in a
+   * 1200px-wide box (which is what the first pass produced at 1440) reads as
+   * a text area, not as a number field -- layout.md: "Make essential
+   * information easy to find by giving it sufficient space", not all of it. */
+  .field {
+    flex: 0 1 14rem;
+  }
+}
+
+.field {
+  min-width: 0;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--ob-hit-min);
+  padding: 0 var(--ob-space-3);
+  background: var(--ob-bg);
+  color: var(--ob-label);
+  border: 1px solid var(--ob-hairline-strong);
+  border-radius: var(--ob-radius-md);
+  /* Tabular monospace here too: the field the bidder types into and the price
+   * they are typing against should read as the same kind of number. */
+  font-family: var(--ob-font-numeric);
+  font-size: var(--ob-type-title3);
+  font-weight: var(--ob-weight-medium);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  transition: border-color var(--ob-duration-fast) var(--ob-ease);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--ob-label-tertiary);
+}
+
+.input:disabled {
+  color: var(--ob-label-tertiary);
+  background: var(--ob-surface-raised);
+  cursor: not-allowed;
+}
+
+/* The field itself carries the error, not just the message below it --
+ * entering-data.md: "Dynamically validate field values ... provide feedback
+ * as soon as you detect a problem." Colour plus the worded alert, never
+ * colour alone. */
+.input[aria-invalid="true"] {
+  border-color: var(--ob-rejected);
+}
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--ob-hit-min);
+  padding: 0 var(--ob-space-5);
+  background: var(--ob-accent-fill);
+  color: var(--ob-on-accent-fill);
+  border: 1px solid transparent;
+  border-radius: var(--ob-radius-md);
+  font-size: var(--ob-type-body);
+  font-weight: var(--ob-weight-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter var(--ob-duration-fast) var(--ob-ease),
+    background-color var(--ob-duration-fast) var(--ob-ease);
+}
+
+.submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.submit:active:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+/* A disabled control has to stay readable -- accessibility.md's contrast
+ * floor does not have a disabled exemption -- so this dims the fill, not the
+ * label past legibility. */
+.submit:disabled {
+  background: var(--ob-surface-raised);
+  color: var(--ob-label-tertiary);
+  border-color: var(--ob-hairline);
+  cursor: not-allowed;
+  filter: none;
+}
+
+.hint {
+  color: var(--ob-label-tertiary);
+  font-size: var(--ob-type-footnote);
+}
+
+.hintValue {
+  color: var(--ob-label-secondary);
+  font-family: var(--ob-font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* IMPORTANT: the <p role="alert"> inside this box must keep a textContent of
+ * EXACTLY the copy string and nothing else. e2e/simultaneous-bid.spec.ts
+ * distinguishes the server's own rejection copy from BidForm's local
+ * minimum-check copy by exact string equality against `allTextContents()`,
+ * which does not normalise -- so a single extra character inside the <p>,
+ * even a decorative glyph, would break it. That is why the icon is an <svg>
+ * SIBLING of the <p> rather than a child of it, and why this box is a
+ * wrapper: the alert role, and its text, stay exactly where they were.
+ *
+ * accessibility.md: "Offer visual indicators, like distinct shapes or icons,
+ * in addition to color to help people perceive differences in function and
+ * changes in state." */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ob-space-2);
+  padding: var(--ob-space-2) var(--ob-space-3);
+  background: var(--ob-rejected-soft);
+  color: var(--ob-rejected);
+  border: 1px solid color-mix(in srgb, var(--ob-rejected) 40%, transparent);
+  border-radius: var(--ob-radius-md);
+  font-size: var(--ob-type-subhead);
+  line-height: var(--ob-leading-snug);
+  animation: alertIn var(--ob-duration-base) var(--ob-ease) both;
+}
+
+.alertIcon {
+  flex: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.12rem;
+}
+
+.alertText {
+  min-width: 0;
+}
+
+@keyframes alertIn {
+  from {
+    opacity: 0;
+    transform: translateY(-0.2rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert {
+    animation: none;
+  }
+}

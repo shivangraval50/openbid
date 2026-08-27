@@ -1,0 +1,86 @@
+/* A pill in the sticky page header, NOT an overlay across the price.
+ *
+ * The brief's requirement -- noticeable while disconnected, never covering
+ * the price -- and feedback.md's guidance point the same way: "Consider
+ * integrating status feedback into your interface. When status feedback is
+ * available near the items it describes, people get important information
+ * without having to take action or leave their current context", and "it
+ * often works well to display status information in a passive way". An
+ * absolutely-positioned toast over the number would be the opposite of both.
+ *
+ * The room header reserves this pill's height whether or not it renders, so
+ * connecting -> open (which unmounts it entirely, by design: an e2e spec
+ * asserts the role="status" element is *hidden* once the socket opens) does
+ * not shift the layout underneath.
+ */
+
+.banner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ob-space-2);
+  min-height: 1.75rem;
+  padding: 0 var(--ob-space-3);
+  border-radius: var(--ob-radius-pill);
+  font-size: var(--ob-type-caption);
+  font-weight: var(--ob-weight-medium);
+  line-height: var(--ob-leading-snug);
+}
+
+/* Escalating prominence, matched to how much the person needs to care --
+ * feedback.md: "The most effective feedback tends to match the significance
+ * of the information to the way it's delivered." */
+.connecting {
+  background: var(--ob-surface-raised);
+  color: var(--ob-label-secondary);
+}
+
+.reconnecting {
+  background: var(--ob-urgent-soft);
+  color: var(--ob-urgent);
+  border: 1px solid color-mix(in srgb, var(--ob-urgent) 35%, transparent);
+}
+
+.closed {
+  background: var(--ob-rejected-soft);
+  color: var(--ob-rejected);
+  border: 1px solid color-mix(in srgb, var(--ob-rejected) 45%, transparent);
+}
+
+/* Shape as well as colour, so the three states are still distinguishable to
+ * someone who cannot tell the hues apart -- accessibility.md, "Convey
+ * information with more than color alone." The dot pulses only while a
+ * reconnect is actually in flight (an indeterminate wait, which is what
+ * loading.md's indeterminate progress indicator is for); a dead connection
+ * gets a static ring, because nothing is in progress. */
+.dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.reconnecting .dot {
+  animation: pulse 1.4s var(--ob-ease) infinite;
+}
+
+.closed .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reconnecting .dot {
+    animation: none;
+  }
+}

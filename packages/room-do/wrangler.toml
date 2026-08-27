@@ -1,0 +1,31 @@
+name = "openbid-rooms"
+main = "src/index.ts"
+compatibility_date = "2026-03-10"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RoomDO"
+
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "LobbyDO"
+
+# Nothing has deployed yet (that is Task 19's job), so this class list can
+# still be edited in place under the same "v1" tag. Cloudflare migrations are
+# append-only *once applied* — after the first real `wrangler deploy`, adding
+# a Durable Object class must go in a new [[migrations]] block with its own
+# tag, never by editing this one.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomDO", "LobbyDO"]
+
+# DATABASE_URL is deliberately NOT declared here as a [vars] entry. A
+# plaintext [vars] value takes precedence over a Workers *secret* of the
+# same name at deploy time, so a [vars] entry — even an empty placeholder —
+# would silently reset the real credential to "" on every
+# `wrangler deploy`, breaking archiving in production with no error and no
+# failing test. Set the real value once with:
+#   npx wrangler secret put DATABASE_URL
+# For local dev, put it in a gitignored `.dev.vars` file instead:
+#   DATABASE_URL=postgres://...
+# `wrangler dev` loads `.dev.vars` automatically; it is never committed.

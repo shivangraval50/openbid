@@ -1,0 +1,37 @@
+{
+  "name": "@openbid/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@openbid/auction-core": "*",
+    "@openbid/charts": "*",
+    "@openbid/llm": "*",
+    "@openbid/protocol": "*",
+    "@openbid/store": "*",
+    "next": "^16.3.3",
+    "next-auth": "^5.0.0-beta.32",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^3.23.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^30.0.1"
+  }
+}
