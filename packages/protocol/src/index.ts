@@ -58,6 +58,65 @@ export const lobbyPriceSchema = z.object({
 });
 export type LobbyPrice = z.infer<typeof lobbyPriceSchema>;
 
+// Structurally mirrors `@openbid/auction-core`'s `AuctionEvent` union,
+// without importing auction-core -- same reasoning, and same guard
+// pattern, as `auctionConfigSchema` above (room-do assigns the parsed
+// result where auction-core's `AuctionEvent` is expected, so a mismatch
+// between the two independently-declared shapes is a type error at that
+// assignment, not a runtime surprise).
+//
+// This schema exists for Task 16's replay path specifically: Neon's
+// `completed_auctions.bid_log` column is `jsonb` with no schema of its
+// own, and it is the one input capable of making the replay/determinism
+// test lie -- feed `reduce` a malformed log (wrong `type`, a stringified
+// number, a missing field) and replay would fold garbage and still
+// "match" a comparison built the same way. `reduce`'s switch has no
+// default case, so an unrecognised `type` reaching it is a silent bug,
+// not a caught error. It is declared here, in `@openbid/protocol`, and
+// not in `@openbid/auction-core`, because auction-core is deliberately
+// the pure rules layer with zero dependencies (no `zod`), while this
+// package already owns every other cross-boundary/external-input shape
+// in the repo (`auctionConfigSchema`, `lobbyRegisterSchema`, the wire
+// message schemas) and already depends on zod for exactly that job. A
+// Neon row is exactly such a boundary: external, untyped at rest, and
+// read back by `apps/web`, which already depends on both packages.
+export const auctionEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("joined"),
+    participantId: z.string().min(1),
+    nickname: z.string().min(1),
+    atMs: z.number().finite(),
+  }),
+  z.object({
+    type: z.literal("bidPlaced"),
+    participantId: z.string().min(1),
+    amount: z.number().finite(),
+    atMs: z.number().finite(),
+    newEndsAtMs: z.number().finite(),
+  }),
+  z.object({
+    type: z.literal("closed"),
+    atMs: z.number().finite(),
+    winner: z.object({ participantId: z.string().min(1), amount: z.number().finite() }).nullable(),
+  }),
+]);
+export type AuctionEvent = z.infer<typeof auctionEventSchema>;
+
+// The shape of a row `apps/web`'s replay path reads back from Neon's
+// `completed_auctions` table (see `packages/room-do/src/archive.ts` for
+// the insert side). A real cross-boundary contract from an external
+// system into the app, gated the same way as the schemas above, with
+// `bidLog` validated element-by-element via `auctionEventSchema` rather
+// than trusted as `unknown[]` -- see that schema's comment for why.
+export const archivedAuctionSchema = z.object({
+  itemName: z.string().min(1),
+  startingPrice: z.number().finite(),
+  winningPrice: z.number().finite().nullable(),
+  winnerNickname: z.string().min(1).nullable(),
+  bidLog: z.array(auctionEventSchema),
+});
+export type ArchivedAuction = z.infer<typeof archivedAuctionSchema>;
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   z.object({ t: z.literal("hello"), lastSeenSeq: seq, nickname: z.string().min(1).max(NICKNAME_MAX_LENGTH) }),
   z.object({ t: z.literal("bid"), clientSeq: seq, amount: money }),
