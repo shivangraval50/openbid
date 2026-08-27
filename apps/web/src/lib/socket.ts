@@ -65,7 +65,26 @@ export function connectRoom(opts: {
     };
 
     ws.onmessage = (event) => {
-      const msg = parseServerMessage(String(event.data));
+      // `parseServerMessage` throws a ZodError on a malformed frame, and an
+      // exception escaping `onmessage` is unhandled -- asymmetric with the
+      // DO's own inbound path, which wraps `parseClientMessage` in a
+      // try/catch and closes with 1003 rather than letting a throw tear down
+      // every socket on the room. Now that `snapshot.state` and
+      // `delta.event` are validated rather than passed through as
+      // `z.unknown()`, this is also the handler for a payload that fails
+      // that validation.
+      //
+      // Dropped, not closed: unlike the DO, this side is not the authority,
+      // and closing would put the client into a reconnect loop over a frame
+      // it cannot influence. A dropped delta leaves `lastSeenSeq` where it
+      // was, so the DO's resume-on-`hello` replay hands it back on the next
+      // reconnect -- the gap is recoverable, a thrown-away store is not.
+      let msg;
+      try {
+        msg = parseServerMessage(String(event.data));
+      } catch {
+        return;
+      }
       if (msg.t === "pong") {
         // Only the client knows receipt time, so the offset is derived here.
         opts.store.getState().observeClock(msg.clientTime, msg.serverTime, Date.now());

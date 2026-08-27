@@ -211,7 +211,23 @@ export function LiveRoom(props: {
       : server.participants[server.winner.participantId]?.nickname ?? null;
 
   const minimum = minimumBid(server);
-  const bidderCount = Object.keys(server.participants).length;
+  // Distinct NICKNAMES, not participant records. Every `hello` on a fresh
+  // socket mints a new participantId and appends a `joined` event, and
+  // nothing ever removes a participant -- so `Object.keys(...).length` made
+  // one person who reconnected twice read as three "Bidders". Counting
+  // nicknames makes the number mean what its label says.
+  //
+  // Deliberately fixed here rather than by deduping participants inside
+  // `RoomDO`'s `hello` handler. That would have worked too, and it would
+  // additionally stop the event log accruing orphan participants -- but it
+  // would silently change participantId from a per-connection identifier to
+  // a per-nickname one, which is the exact premise two documented
+  // justifications rest on (the `closed` branch below, and the README's
+  // "no 'you won' indicator" limitation). Changing an identity lifetime to
+  // fix a stat readout is a worse trade than counting the stat correctly.
+  // The label is also not renamed: it was already telling the truth about
+  // what it was supposed to show.
+  const bidderCount = new Set(Object.values(server.participants).map((p) => p.nickname)).size;
   const budget = youAre === null ? null : server.participants[youAre]?.budget ?? null;
 
   return (

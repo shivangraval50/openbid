@@ -102,6 +102,34 @@ describe("LiveRoom", () => {
     expect(screen.getByTestId("outcome")).toHaveTextContent(/won by me at 250/i);
   });
 
+  // Minor from review: every `hello` on a fresh socket mints a new
+  // participantId and appends another `joined` event, and nothing ever
+  // removes a participant -- so one person who reconnected twice used to
+  // read as three "Bidders". The state below is exactly what the DO holds
+  // after that: three participant records, two of them the same person.
+  // `Object.keys(server.participants).length` reports 3 and fails this.
+  it("counts distinct bidders by nickname, so one person's reconnects are not three bidders", () => {
+    render(
+      <LiveRoom
+        roomId="room-3"
+        initialSeq={4}
+        initialServerTime={1_000}
+        initialState={seededState({
+          participants: {
+            "conn-1": { id: "conn-1", nickname: "brisk-otter-7f3", budget: 500, persistent: false },
+            "conn-2": { id: "conn-2", nickname: "brisk-otter-7f3", budget: 500, persistent: false },
+            "conn-3": { id: "conn-3", nickname: "octocat", budget: 500, persistent: true },
+          },
+        })}
+        socketBaseUrl="http://localhost:8787"
+        itemName="liveroom-test"
+      />
+    );
+
+    // Two real people, three connections.
+    expect(screen.getByText("Bidders").nextElementSibling).toHaveTextContent("2");
+  });
+
   // Functional consequence of fix #1 (routing `selectMsRemaining`/
   // `selectServerNow` through plain `store.getState()` calls rather than
   // `useSyncExternalStore`): the countdown must still visibly update as

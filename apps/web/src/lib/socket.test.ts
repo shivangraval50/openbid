@@ -240,6 +240,65 @@ describe("connectRoom", () => {
     expect(observeClockSpy).toHaveBeenCalledTimes(1); // unchanged by the delta
   });
 
+  // Minor from review: `parseServerMessage` was called outside any
+  // try/catch, so a malformed frame threw inside `ws.onmessage` unhandled --
+  // asymmetric with the DO's inbound path, which catches and closes with
+  // 1003 rather than letting a throw tear down every socket in the room.
+  // The store must be untouched and the connection must stay usable.
+  it("drops a malformed frame instead of throwing out of onmessage", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(4, 1_000, seededState());
+    connectRoom({ url: "ws://room", nickname: "gil", persistent: false, store, onStatus: vi.fn() });
+    const ws = FakeWebSocket.instances[0]!;
+    ws.triggerOpen();
+
+    expect(() => ws.triggerMessage("{{{ not json")).not.toThrow();
+    expect(store.getState().lastSeenSeq).toBe(4);
+
+    // Still live: a good frame after the bad one is still applied.
+    ws.triggerMessage(
+      encode({
+        t: "delta",
+        seq: 5,
+        serverTime: 1_100,
+        event: {
+          type: "bidPlaced",
+          participantId: "me",
+          amount: 300,
+          atMs: 1_100,
+          newEndsAtMs: 1_000_000,
+        },
+      })
+    );
+    expect(store.getState().server?.highBid?.amount).toBe(300);
+  });
+
+  // The same guard, on the shape that only became reachable once
+  // `snapshot.state`/`delta.event` were given real schemas instead of
+  // `z.unknown()`: a well-formed envelope carrying a payload `reduce` would
+  // not recognise. Before that change this frame parsed fine and the cast
+  // fed it straight into `reduce`'s default-less switch.
+  it("drops a well-formed envelope whose payload fails validation", () => {
+    const store = createAuctionStore();
+    store.getState().seedFromSnapshot(4, 1_000, seededState());
+    connectRoom({ url: "ws://room", nickname: "hal", persistent: false, store, onStatus: vi.fn() });
+    const ws = FakeWebSocket.instances[0]!;
+    ws.triggerOpen();
+
+    expect(() =>
+      ws.triggerMessage(
+        JSON.stringify({
+          t: "delta",
+          seq: 5,
+          serverTime: 1_100,
+          event: { type: "bidRetracted", participantId: "me", atMs: 1_100 },
+        })
+      )
+    ).not.toThrow();
+    expect(store.getState().lastSeenSeq).toBe(4);
+    expect(store.getState().server?.highBid).toBeNull();
+  });
+
   // Catches: `close()` leaving the 5s ping interval running (a leaked
   // timer that keeps sending on a socket the caller believes is dead) or
   // still scheduling a reconnect after an intentional, disposed close.
